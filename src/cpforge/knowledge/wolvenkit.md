@@ -8,8 +8,11 @@ the repeatable parts and checks the results.
 - CLI (`WolvenKit.CLI.exe`, tool name `cp77tools`): `pack <folder> -o <out>`
   builds an `.archive`; `unbundle`/`uncook` extract from game archives;
   `export`/`import` convert raw files; `hash` prints FNV-1a hashes.
-- Point the forge at it with `WOLVENKIT_CLI=<path to WolvenKit.CLI.exe>` or put
-  it on PATH. `cpforge doctor` shows whether it was found.
+- The forge finds it through `WOLVENKIT_CLI=<path to WolvenKit.CLI.exe>`, PATH,
+  the dotnet tools folder, or the Reverse THIS! kit folder. `cpforge doctor`
+  shows which path it uses.
+- Vehicle work (mesh import onto vanilla templates, tangent sign, material
+  JSON): see `cpforge knowledge vehicles`.
 - Releases: https://github.com/WolvenKit/WolvenKit/releases
 
 Keep extracted game files out of public repositories; ship only your own

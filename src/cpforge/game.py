@@ -173,6 +173,11 @@ def find_tool(tool_id: str) -> str | None:
             hit = shutil.which(name)
             if hit:
                 return hit
+        # Known install folders (%VAR% expanded on every OS, so tests run anywhere).
+        for hint in t.get("paths", []):
+            expanded = re.sub(r"%(\w+)%", lambda m: os.environ.get(m.group(1), m.group(0)), hint)
+            if "%" not in expanded and Path(expanded).is_file():
+                return str(Path(expanded))
     return None
 
 

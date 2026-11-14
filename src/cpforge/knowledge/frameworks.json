@@ -45,7 +45,7 @@
   ],
   "tools": [
     {"id": "wolvenkit", "name": "WolvenKit CLI", "role": "pack/unbundle/uncook/convert game resources (needed for .archive mods)",
-     "env": "WOLVENKIT_CLI", "names": ["WolvenKit.CLI.exe", "WolvenKit.CLI", "cp77tools"], "repo": "https://github.com/WolvenKit/WolvenKit"},
+     "env": "WOLVENKIT_CLI", "names": ["WolvenKit.CLI.exe", "WolvenKit.CLI", "cp77tools"], "paths": ["%USERPROFILE%/.dotnet/tools/WolvenKit.CLI.exe", "%LOCALAPPDATA%/ReverseThis/kit/sandbox/tools/wolvenkit-cli/WolvenKit.CLI.exe"], "repo": "https://github.com/WolvenKit/WolvenKit"},
     {"id": "luajit", "name": "Lua syntax checker", "role": "syntax check for CET init.lua (luajit, luac5.1 or luac)",
      "env": "CPFORGE_LUA", "names": ["luajit", "luac5.1", "luac", "luac5.4"], "repo": null},
     {"id": "cmake", "name": "CMake", "role": "builds RED4ext plugin projects", "env": null, "names": ["cmake"], "repo": null},

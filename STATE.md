@@ -1,12 +1,22 @@
 # STATE
 
-Version: **0.2.0** (2026-11-14)
+Version: **0.3.0** (2026-11-14)
 
 ## Goal
 
 A local, agent-friendly toolkit for every kind of Cyberpunk 2077 mod:
 redscript, CET, TweakXL, ArchiveXL, RED4ext, Input Loader, Mod Settings,
 Audioware, REDmod. Facts come from the installed game.
+
+## Done (0.3.0)
+
+- `vehicle` route + `knowledge/vehicles.md`, seeded from the Sonata vehicle
+  project's verified findings (its steps 1-4). Remaining sections (ent/app,
+  light components, shadow/proxy, burnt, TweakXL record, VCD) arrive from that
+  project as it reaches them.
+- WolvenKit CLI auto-discovery (dotnet tools folder, Reverse THIS! kit folder).
+- v0.2.0 published by the tag workflow; its zip rebuilt locally with TZ=UTC is
+  byte-identical.
 
 ## Done (0.2.0)
 
@@ -39,7 +49,7 @@ Audioware, REDmod. Facts come from the installed game.
 | redscript templates compile | tool-validated | `cpforge check --compile` on a 2.5 install: 0 errors (redscript + modsettings + input) |
 | RED4ext template builds | tool-validated | `cpforge build` locally (MSVC 19.52, SDK commit 0f5eba4) produced the DLL; CI builds it on windows-latest |
 | Templates load in game | not tested | no in-game load of any template yet |
-| WolvenKit pack step | not tested | WolvenKit CLI not installed on the dev machine |
+| WolvenKit pack step | tool-validated | `cpforge build` on an archivexl project with the auto-discovered WolvenKit CLI 9.1: exit 0, the forge's archive reader finds the packed resource |
 | Lua syntax check | CI only | luajit in the Ubuntu CI job; not on the dev machine |
 | .tweak parser | tool-validated | every vanilla and installed .tweak file of a 2.5 install parses with 0 findings; synthetic errors located by line in tests |
 | Native-only call check | tool-validated | 0 findings over installed mods; LogChannel in a scratch project flagged on 2.5 |
@@ -48,8 +58,8 @@ Audioware, REDmod. Facts come from the installed game.
 
 ## Next
 
-See PLAN.md (MCP wrapper, WolvenKit unbundle/convert, Dogtown helpers,
-vehicle-mod guidance from the car-mod project).
+See PLAN.md. Vehicle intel: the Sonata car-mod session sends verified findings;
+fold each into vehicles.md, and into checks or templates where it generalises.
 
 ## Run / build
 

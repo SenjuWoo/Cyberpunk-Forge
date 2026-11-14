@@ -60,7 +60,8 @@ jobs:
           body = m.group(1).strip() if m else ""
           sha = open(f"dist/{os.environ['ZIP']}.sha256").read().split()[0]
           body += (f"\n\n`{os.environ['ZIP']}` is `git archive` of {os.environ['GITHUB_SHA'][:7]} (built twice, identical "
-                   f"bytes). SHA-256 `{sha}`, also in the attached `.sha256` file.\n\n"
+                   f"bytes). SHA-256 `{sha}`, also in the attached `.sha256` file. Rebuild it byte for byte with "
+                   f"`TZ=UTC git archive --format=zip --prefix=Cyberpunk-Forge-{os.environ['VERSION']}/ {os.environ['GITHUB_SHA'][:7]}`.\n\n"
                    "**Install:** extract, run `START-HERE.bat`. Needs Python 3.10+ and the game; REDmod DLC recommended.")
           open("notes.md", "w", encoding="utf-8").write(body + "\n")
           EOF

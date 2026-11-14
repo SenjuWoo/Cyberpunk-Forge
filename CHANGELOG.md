@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0 - 2026-11-14
+
+- Vehicles: `cpforge plan` routes car, bike and vehicle requests to a new
+  `vehicle` route, and `cpforge knowledge vehicles` documents the conventions
+  read from vanilla 2.5 cars and WolvenKit 9.1 round trips in a real vehicle
+  project: reference rigs and additive door/hood/trunk clips, base rigs by
+  wheelbase and track, the model frame, bone-local unskinned part meshes,
+  submesh naming, light zones in vertex colour and the `lightType` bits, mesh
+  import onto vanilla templates, the WolvenKit tangent sign, and the material
+  JSON layout.
+- WolvenKit CLI is found without `WOLVENKIT_CLI` when it sits in the dotnet
+  tools folder or the Reverse THIS! kit folder; `cpforge doctor` shows the path.
+- Release notes say how to rebuild the source zip byte for byte (`TZ=UTC git
+  archive`; zip timestamps are local time).
+
 ## 0.2.0 - 2026-11-14
 
 - `.tweak` files (RED TweakDB syntax) are checked: records, attributes, typed

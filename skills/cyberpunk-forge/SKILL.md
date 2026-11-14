@@ -3,7 +3,7 @@ name: cyberpunk-forge
 description: Make, check, fix, package and publish Cyberpunk 2077 mods with Cyberpunk Forge (cpforge). Use for redscript, Cyber Engine Tweaks Lua, TweakXL, ArchiveXL, RED4ext C++ plugins, Input Loader, Mod Settings, Audioware, REDmod, WolvenKit archives, mod conflicts, broken mods after a game patch, redscript compile errors, CET errors, and Nexus releases.
 ---
 
-# Cyberpunk Forge (cpforge 0.2.0)
+# Cyberpunk Forge (cpforge 0.3.0)
 
 Use the forge as the evidence layer. Never write a class, method, record or
 resource path from memory when `cpforge` can read it from the installed game.
@@ -37,7 +37,8 @@ If `cpforge` is not on PATH, run `cpforge.cmd` from the forge folder or
 ## Surface choice (least powerful first)
 
 TweakXL data < redscript (prefer `@wrapMethod`) < CET Lua < ArchiveXL resources
-< RED4ext native. Mod Settings for options, Input Loader for key bindings,
+< RED4ext native. New cars and bikes: `cpforge knowledge vehicles` first (copy a
+vanilla car of the same layout; rigs, frames, light zones, WolvenKit import). Mod Settings for options, Input Loader for key bindings,
 Audioware for sound, REDmod only when a REDmod package is required.
 
 ## Broken setup or broken mod

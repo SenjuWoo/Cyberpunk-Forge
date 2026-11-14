@@ -628,6 +628,25 @@ class CliTests(Base):
         self.assertEqual(d["payload"]["status"], "ok")
         self.assertEqual(d["game"]["root"], str(self.game))
 
+    def test_wolvenkit_found_in_known_folder(self):
+        from cpforge import game as G
+        saved = {k: os.environ.get(k) for k in ("WOLVENKIT_CLI", "LOCALAPPDATA", "PATH")}
+        try:
+            os.environ.pop("WOLVENKIT_CLI", None)
+            os.environ["PATH"] = str(self.tmp / "empty")
+            os.environ["LOCALAPPDATA"] = str(self.tmp / "lad")
+            self.assertIsNone(G.find_tool("wolvenkit"))
+            exe = self.tmp / "lad/ReverseThis/kit/sandbox/tools/wolvenkit-cli/WolvenKit.CLI.exe"
+            exe.parent.mkdir(parents=True)
+            exe.write_bytes(b"MZ")
+            self.assertEqual(Path(G.find_tool("wolvenkit")), exe)
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
     def test_doctor_missing_game_is_named(self):
         os.environ.pop("CP2077_ROOT", None)
         code, d = run_cli("doctor", "--game", str(self.tmp / "nope"))
@@ -639,7 +658,8 @@ class CliTests(Base):
     def test_plan_routes(self):
         cases = {"add a new jacket clothing item": "new-asset", "change weapon damage and price": "tweak-data",
                  "my game crashes after the patch": "debug", "add an imgui overlay window with a hotkey": "cet-lua",
-                 "native c++ dll plugin": "native-plugin", "publish to nexus with a changelog": "publish"}
+                 "native c++ dll plugin": "native-plugin", "publish to nexus with a changelog": "publish",
+                 "make a drivable car with working headlights": "vehicle"}
         for text, route in cases.items():
             code, d = run_cli("plan", text)
             self.assertEqual(d["route"]["id"], route, text)
