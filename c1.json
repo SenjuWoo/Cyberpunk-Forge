@@ -1,4 +1,0 @@
-{
-  "error": "no cpforge.json in Z:\\Backup\\Ai documentation\\Tools\\Ai tools\\Cyberpunk Forge or its parents",
-  "fix": "run inside a project, pass --project, or create one: cpforge new"
-}
