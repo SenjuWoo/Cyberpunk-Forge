@@ -172,7 +172,10 @@ def cmd_res(args):
     for f in args.files:
         p = Path(f)
         if args.action == "roundtrip":
-            results.append(R.roundtrip(p))
+            try:
+                results.append(R.roundtrip(p))
+            except ForgeError as e:
+                results.append({"file": str(p), "ok": False, "error": str(e), "fix": e.fix})
             continue
         root = Path(args.root) if args.root else R.project_root_of(p)
         names = trees.setdefault(str(root), R.tree_hashes(root)) if root else {}

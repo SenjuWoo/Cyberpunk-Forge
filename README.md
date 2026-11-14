@@ -37,6 +37,8 @@ your patch.
 | Nexus page kit (BBCode, changelog, file description) | `cpforge nexus` |
 | Archive and TweakDB hashes | `cpforge hash <path>`, `cpforge hash --tweakdb <Record>` |
 | Which archive contains a resource? | `cpforge archive find base\...\x.mesh --vanilla` |
+| Check, inspect or round-trip a mesh, appearance or entity (via WolvenKit JSON) | `cpforge res check x.app`, `cpforge res inspect x.ent`, `cpforge res roundtrip x.mesh` |
+| Build a new drivable car | `cpforge plan "new drivable car"`, `cpforge knowledge vehicles` |
 
 `cpforge capabilities` lists every command and option of the installed version.
 

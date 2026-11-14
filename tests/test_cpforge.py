@@ -397,6 +397,137 @@ class StaticCheckTests(Base):
         self.assertTrue(r["complete"])
 
 
+def _cn(v):
+    return {"$type": "CName", "$storage": "string", "$value": v}
+
+
+def _path(v, storage="string"):
+    return {"DepotPath": {"$type": "ResourcePath", "$storage": storage, "$value": v}, "Flags": "Default"}
+
+
+def wk_doc(root):
+    return {"Header": {"WolvenKitVersion": "9.1.0"}, "Data": {"Version": 195, "RootChunk": root}}
+
+
+def synthetic_mesh(submeshes=3, entries=("paint", "glass"), local=2, preload=False, chunk_mats=None):
+    me = [{"$type": "CMeshMaterialEntry", "index": i, "isLocalInstance": 1, "name": _cn(n)} for i, n in enumerate(entries)]
+    mats = [{"$type": "CMaterialInstance"} for _ in range(local)]
+    root = {"$type": "CMesh", "materialEntries": me, "externalMaterials": [], "preloadExternalMaterials": [],
+            "localMaterialBuffer": {"materials": [] if preload else mats},
+            "preloadLocalMaterialInstances": [{"HandleId": str(i + 10), "Data": m} for i, m in enumerate(mats)] if preload else [],
+            "renderResourceBlob": {"HandleId": "0", "Data": {"header": {"renderChunkInfos": [{"lodMask": 1}] * submeshes}}},
+            "appearances": [{"HandleId": "1", "Data": {"$type": "meshMeshAppearance", "name": _cn("default"),
+                                                       "chunkMaterials": [_cn(x) for x in (chunk_mats or ["paint"] * submeshes)]}}]}
+    return wk_doc(root)
+
+
+def synthetic_app(dup_handles=False):
+    def appearance(handle_base, buffer_id, name):
+        comps = [{"$type": "entMeshComponent", "id": "100", "name": _cn("body"), "mesh": _path("mymod\\meshes\\body.mesh"),
+                  "meshAppearance": _cn("default"),
+                  "parentTransform": {"HandleId": str(handle_base), "Data": {"$type": "entHardTransformBinding",
+                                                                               "bindName": _cn("vehicle_slots"), "slotName": _cn("Base")}}},
+                 {"$type": "vehicleLightComponent", "id": "101", "name": _cn("head_left"), "lightType": "Head",
+                  "materialZone": "Zero", "parentTransform": {"HandleRefId": str(handle_base)}},
+                 {"$type": "entAppearanceProxyMeshComponent", "id": "102", "name": _cn("proxy"),
+                  "genericCurveSetOverride": _path("0", "uint64")}]
+        return {"HandleId": str(handle_base + 1), "Data": {
+            "$type": "appearanceAppearanceDefinition", "name": _cn(name),
+            # 'components' mirrors the chunks; its bindings refer to the chunk handles (vanilla has no repeated HandleId).
+            "components": [dict(c, parentTransform={"HandleRefId": str(handle_base)}) if "parentTransform" in c else dict(c)
+                           for c in comps],
+            "proxyMesh": _path("mymod\\meshes\\proxy.mesh"),
+            "compiledData": {"BufferId": str(buffer_id), "Data": {"CruidDict": {str(i): c["id"] for i, c in enumerate(comps)},
+                                                                   "Chunks": comps}}}}
+    a = appearance(1, 0, "red")
+    b = appearance(1 if dup_handles else 5, 0 if dup_handles else 1, "blue")
+    return wk_doc({"$type": "appearanceAppearanceResource", "appearances": [a, b]})
+
+
+class ResourceTests(Base):
+    def test_mesh_rules(self):
+        from cpforge import resource as R
+        r = R.check(synthetic_mesh())
+        self.assertTrue(r["ok"], r["errors"])
+        self.assertEqual(r["summary"]["submeshes"], 3)
+        self.assertEqual(r["summary"]["material_storage"], "localMaterialBuffer")
+        self.assertTrue(R.check(synthetic_mesh(preload=True))["ok"])
+        codes = lambda d: {e["code"] for e in R.check(d)["errors"]}  # noqa: E731
+        self.assertIn("RES-MESH-CHUNKMATS", codes(synthetic_mesh(chunk_mats=["paint", "paint"])))
+        self.assertIn("RES-MESH-MATNAME", codes(synthetic_mesh(chunk_mats=["paint", "chrome", "paint"])))
+        self.assertIn("RES-MESH-LOCAL-COUNT", codes(synthetic_mesh(local=1)))
+
+    def test_app_rules_and_document_wide_handles(self):
+        from cpforge import resource as R
+        good = R.check(synthetic_app())
+        self.assertTrue(good["ok"], good["errors"])
+        app = good["summary"]["detail"][0]
+        self.assertEqual(app["lights"], [{"name": "head_left", "light_type": "Head", "material_zone": "Zero",
+                                          "bound_to": "vehicle_slots/Base"}])
+        self.assertEqual(app["proxy_mesh"], "mymod\\meshes\\proxy.mesh")
+        bad = R.check(synthetic_app(dup_handles=True))
+        self.assertEqual({e["code"] for e in bad["errors"]}, {"RES-HANDLE-DUP", "RES-BUFFER-DUP"})
+        doc = synthetic_app()
+        chunks = doc["Data"]["RootChunk"]["appearances"][0]["Data"]["compiledData"]["Data"]
+        chunks["CruidDict"]["1"] = "999"
+        chunks["Chunks"][2]["genericCurveSetOverride"]["DepotPath"]["$value"] = 0
+        codes = {e["code"] for e in R.check(doc)["errors"]}
+        self.assertTrue({"RES-CRUID", "RES-PATH-UINT64"} <= codes, codes)
+        doc = synthetic_app()
+        doc["Data"]["RootChunk"]["appearances"][0]["Data"]["components"].pop()
+        self.assertIn("RES-COMPONENTS-CHUNKS", {w["code"] for w in R.check(doc)["warnings"]})
+        doc = synthetic_app()
+        doc["Data"]["RootChunk"]["appearances"][1]["Data"]["compiledData"]["Data"]["Chunks"][1]["parentTransform"] = {"HandleRefId": "77"}
+        self.assertIn("RES-HANDLE-DANGLING", {e["code"] for e in R.check(doc)["errors"]})
+
+    def test_references_resolve_against_project_and_game(self):
+        from cpforge import resource as R
+        root = self.tmp / "proj/source/archive"
+        (root / "mymod/meshes").mkdir(parents=True)
+        (root / "mymod/meshes/body.mesh").write_bytes(b"CR2W")
+        self.assertEqual(R.project_root_of(root / "mymod/meshes/body.mesh"), root.resolve())
+        names = R.tree_hashes(root)
+        doc = synthetic_app()
+        # A path WolvenKit could not name is stored as its hash.
+        h = util.resource_hash("mymod\\meshes\\body.mesh")
+        doc["Data"]["RootChunk"]["appearances"][1]["Data"]["compiledData"]["Data"]["Chunks"][0]["mesh"] = _path(str(h), "uint64")
+        found, summary = R.reference_check(doc, names, {util.resource_hash("base\\x.mesh"): "basegame.archive"})
+        self.assertEqual(summary["in_project"], 1)
+        self.assertEqual([f["missing"] for f in found], [["mymod\\meshes\\proxy.mesh"]])
+        R.name_hashes(doc, names)
+        self.assertIn("mymod\\meshes\\body.mesh", R.check(doc)["summary"]["detail"][1]["meshes"])
+        doc["Data"]["RootChunk"]["appearances"][0]["Data"]["proxyMesh"] = _path("base\\vehicles\\gone.mesh")
+        doc["Data"]["RootChunk"]["appearances"][1]["Data"]["proxyMesh"] = _path("base\\vehicles\\gone.mesh")
+        found, summary = R.reference_check(doc, names, {})
+        self.assertEqual(found, [])  # vanilla files reference unshipped base\ paths too
+        self.assertEqual(summary["vanilla_paths_not_shipped"], ["base\\vehicles\\gone.mesh"])
+
+    def test_res_cli_on_json_and_unreadable_files(self):
+        p = self.tmp / "m.mesh.json"
+        p.write_text(json.dumps(synthetic_mesh(chunk_mats=["paint"])), encoding="utf-8")
+        q = self.tmp / "x.mesh"
+        q.write_bytes(b"CR2W" + b"\0" * 16)
+        r = self.tmp / "junk.json"
+        r.write_bytes(b"\xc3\x28 not json")
+        saved = {k: os.environ.get(k) for k in ("WOLVENKIT_CLI", "PATH", "LOCALAPPDATA", "USERPROFILE")}
+        os.environ.pop("WOLVENKIT_CLI", None)
+        for k in ("PATH", "LOCALAPPDATA", "USERPROFILE"):
+            os.environ[k] = str(self.tmp / "empty")
+        try:
+            code, d = run_cli("res", "check", str(p), str(q), str(r), "--no-game")
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        self.assertEqual(code, 1)
+        res = {Path(x["file"]).name: x for x in d["results"]}
+        self.assertEqual([e["code"] for e in res["m.mesh.json"]["errors"]], ["RES-MESH-CHUNKMATS"])
+        self.assertEqual(res["x.mesh"]["errors"][0]["code"], "RES-READ")  # CR2W needs WolvenKit, named failure
+        self.assertEqual(res["junk.json"]["errors"][0]["code"], "RES-READ")
+
+
 class ApiDiffTests(Base):
     def store_as(self, name):
         index.build(self.game)
@@ -496,6 +627,26 @@ class ProjectTests(Base):
         r = check.check_project(out)
         self.assertEqual([w for w in r["warnings"] if w["code"] == "TWEAK-FLAT"], [])
         self.assertEqual(r["errors"], [], r["errors"])
+
+    def test_vehicle_record_paths_and_listing(self):
+        out, _ = self.new(["tweakxl"])
+        index.build(self.game)
+        (self.game / "archive/pc/content").mkdir(parents=True)
+        archive.write_test_archive(self.game / "archive/pc/content/basegame.archive", {"base\\vehicles\\x.app": b"1"})
+        (out / "source/archive/testmod/vehicles").mkdir(parents=True)
+        (out / "source/archive/testmod/vehicles/car.ent").write_bytes(b"CR2W")
+        y = out / "game/r6/tweaks/TestMod/TestMod.yaml"
+        body = ("Vehicle.v_test:\n  $base: Vehicle.v_standard2_archer_hella_player\n"
+                "  entityTemplatePath: testmod\\vehicles\\car.ent\n  appearanceResource: base\\vehicles\\x.app\n"
+                "  icon: testmod\\ui\\missing.inkatlas\n")
+        y.write_text(body, encoding="utf-8")
+        r = check.check_project(out)
+        warns = [(w["code"], w["message"].split("'")[1] if w["code"] == "TWEAK-RESOURCE" else "") for w in r["warnings"]]
+        self.assertIn(("VEHICLE-NOT-LISTED", ""), warns)
+        self.assertEqual([m for c, m in warns if c == "TWEAK-RESOURCE"], ["testmod\\ui\\missing.inkatlas"])
+        self.assertIn("tweak resource paths (3)", r["checked"])
+        y.write_text(body + "Vehicle.vehicle_list.list:\n  - !append Vehicle.v_test\n", encoding="utf-8")
+        self.assertNotIn("VEHICLE-NOT-LISTED", {w["code"] for w in check.check_project(out)["warnings"]})
 
     def test_check_catches_secret_and_version_mirror(self):
         out, _ = self.new(["redmod", "redscript"])

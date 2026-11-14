@@ -3,7 +3,7 @@ name: cyberpunk-forge
 description: Make, check, fix, package and publish Cyberpunk 2077 mods with Cyberpunk Forge (cpforge). Use for redscript, Cyber Engine Tweaks Lua, TweakXL, ArchiveXL, RED4ext C++ plugins, Input Loader, Mod Settings, Audioware, REDmod, WolvenKit archives, mod conflicts, broken mods after a game patch, redscript compile errors, CET errors, and Nexus releases.
 ---
 
-# Cyberpunk Forge (cpforge 0.3.0)
+# Cyberpunk Forge (cpforge 0.4.0)
 
 Use the forge as the evidence layer. Never write a class, method, record or
 resource path from memory when `cpforge` can read it from the installed game.
@@ -25,6 +25,9 @@ If `cpforge` is not on PATH, run `cpforge.cmd` from the forge folder or
    - `cpforge api class <Class> [--filter <text>]`, `cpforge api search <text> --kind func`
    - `cpforge tweak search <words>`, `cpforge tweak show <Record>`
    - `cpforge archive find <resource path> --vanilla`
+   - `cpforge res inspect <file.mesh|.app|.ent>` - components, lights, slots,
+     materials of a game resource; `cpforge res check` before every WolvenKit
+     deserialize; `cpforge res roundtrip` to prove a file survives JSON editing
 6. `cpforge check --compile` - fix every error; read `gaps` and say which
    checks did not run. `RS-NATIVE-VIA-MOD` means a call compiles only because
    another installed mod declares it: add that mod to `script_dependencies` or

@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.4.0 - 2026-11-15
+
+- `cpforge res check | inspect | roundtrip <files>` for game resources (CR2W or
+  WolvenKit JSON):
+  - check: repeated or dangling handle ids, repeated compiledData BufferIds,
+    numeric empty ResourcePaths, CruidDict vs chunk ids, `components` vs chunks,
+    mesh submesh count vs each appearance's chunkMaterials, material entries vs
+    instances, lights without type or zone, proxy without proxy component, and
+    every referenced resource looked up in the project's `source/archive` and the
+    game's archives (bare hashes are named from the project tree).
+  - inspect adds components, meshes, lights (type, zone, binding), slots and
+    proxy per appearance; roundtrip proves CR2W -> JSON -> CR2W gives the same
+    bytes.
+  - Calibrated on a real car build and the vanilla Archer Hella: 79 files clean,
+    0 unresolved references; a copied appearance with repeated handles is
+    flagged with the same cause WolvenKit fails on.
+- `check` warns about resource paths in tweaks that exist in neither the project
+  nor any game archive (`TWEAK-RESOURCE`), and about a car based on a
+  `_player` record that is not appended to `Vehicle.vehicle_list`
+  (`VEHICLE-NOT-LISTED`).
+- Fixed: YAML flats and references on records that live only in the vanilla
+  `.tweak` sources (e.g. `Vehicle.vehicle_list`) were reported as missing;
+  `cpforge tweak exists` now finds them too and says where.
+- Fixed: a corrupt CR2W (WolvenKit leaves an empty .json) and a binary `.json`
+  game resource are reported per file instead of stopping the command.
+- `knowledge vehicles` covers the whole car build: extraction, frame and mesh
+  conventions, rigs and steering, glb import rules, materials, lights, `.app`/
+  `.ent` compiledData, `.phys`, TweakXL/dealer/localization/inkatlas, and a
+  pitfall table, from a complete car project.
+
 ## 0.3.0 - 2026-11-14
 
 - Vehicles: `cpforge plan` routes car, bike and vehicle requests to a new

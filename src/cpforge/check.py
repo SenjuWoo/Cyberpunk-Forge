@@ -15,7 +15,7 @@ from .game import find_game, find_tool
 from .package import ALLOWED_ROOTS, scan_secrets
 from .project import SEMVER, load_manifest
 from .tweakdb import TweakDB, installed_yaml_records, parse_yaml, references, yaml_records
-from .util import KNOWLEDGE_DIR, ForgeError, iter_files, load_json, rel
+from .util import KNOWLEDGE_DIR, ForgeError, iter_files, load_json, rel, resource_hash
 
 
 class Report:
@@ -164,6 +164,78 @@ def _red_tweak_check(files: list[Path], rep: Report, root: Path, game: Path | No
     rep.done("tweak source bases and references")
 
 
+def _strings(value) -> list[str]:
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in _strings(v)]
+    return [value] if isinstance(value, str) else []
+
+
+def _tweak_resources_and_vehicles(yaml_files: list[Path], tweak_files: list[Path], rep: Report, root: Path,
+                                  game: Path | None):
+    """Resource paths named in tweaks must exist; a new player car must be in Vehicle.vehicle_list."""
+    from . import resource as R
+    refs: dict[str, tuple[str, int | None]] = {}  # path -> (file, line)
+    player_cars: dict[str, str] = {}               # record -> file
+    listed: set[str] = set()
+    for y in yaml_files:
+        try:
+            doc = parse_yaml(y) or {}
+        except Exception:  # reported by the YAML check
+            continue
+        if not isinstance(doc, dict):
+            continue
+        for key, val in doc.items():
+            for s in _strings(val):
+                if s.lower().endswith(R.RESOURCE_EXTS) and ("\\" in s or "/" in s):
+                    refs.setdefault(s, (rel(y, root), None))
+            key = str(key)
+            if key == "Vehicle.vehicle_list.list":
+                listed |= set(_strings(val))
+            elif isinstance(val, dict) and re.match(r"^Vehicle\.\w+_player$", str(val.get("$base") or "")):
+                player_cars[key] = rel(y, root)
+    for t in tweak_files:
+        p = tweaksrc.parse_file(t)
+        if p["error"]:
+            continue
+        for s, line in p["strings"]:
+            if s.lower().endswith(R.RESOURCE_EXTS) and ("\\" in s or "/" in s):
+                refs.setdefault(s, (rel(t, root), line))
+        for name, r in tweaksrc.full_names(p).items():
+            if r["base"] and re.match(r"^(Vehicle\.)?\w+_player$", r["base"]) and name.startswith("Vehicle."):
+                player_cars[name] = rel(t, root)
+    for car, f in sorted(player_cars.items()):
+        if car not in listed:
+            rep.add("warning", "VEHICLE-NOT-LISTED", f"{car} is based on a player car but is not appended to "
+                    "Vehicle.vehicle_list.list, so the game will not offer it (add `Vehicle.vehicle_list.list: "
+                    f"[!append {car}]`)", f)
+    if player_cars:
+        rep.done("vehicle records")
+    if not refs:
+        return
+    project: set[int] = set()
+    src = root / "source" / "archive"
+    if src.is_dir():
+        project |= set(R.tree_hashes(src))
+    for a in (root / "game").rglob("*.archive"):
+        try:
+            project |= set(read_archive(a, with_names=False).hashes)
+        except ForgeError:
+            pass
+    pending = {s: v for s, v in refs.items() if resource_hash(s) not in project}
+    if pending and not game:
+        rep.gap("tweak resource paths", f"{len(pending)} path(s) not in this project; game not found to look further")
+        return
+    if pending:
+        found = R.game_hashes(game)
+        for s, (f, line) in sorted(pending.items()):
+            if resource_hash(s) not in found:
+                rep.add("warning", "TWEAK-RESOURCE", f"'{s}' is not in this project's source/archive or built archive, "
+                        "nor in any game or installed archive", f, line)
+    rep.done(f"tweak resource paths ({len(refs)})")
+
+
 def _xl_check(files: list[Path], rep: Report, root: Path):
     for f in files:
         try:
@@ -279,6 +351,8 @@ def check_project(root: Path, game_arg: str | None = None, compile_scripts: bool
     red_tweaks = [f for f in files if f.suffix == ".tweak"]
     if red_tweaks:
         _red_tweak_check(red_tweaks, rep, root, game, idx, yamls)
+    if yamls or red_tweaks:
+        _tweak_resources_and_vehicles(yamls, red_tweaks, rep, root, game)
     _xl_check([f for f in files if f.name.endswith(".archive.xl")], rep, root)
     _xml_check([f for f in files if f.suffix == ".xml" and "r6/input" in f.as_posix()], rep, root)
     for info in [f for f in files if f.name == "info.json" and "/mods/" in "/" + f.relative_to(game_dir).as_posix()]:

@@ -43,9 +43,10 @@ def serialize(path: Path, out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     res = _wk(["convert", "serialize", str(path), "-o", str(out_dir)])
     out = out_dir / (path.name + ".json")
-    if not out.is_file():
+    # A corrupt CR2W leaves an empty .json behind instead of no file.
+    if not out.is_file() or out.stat().st_size == 0:
         raise ForgeError(f"WolvenKit could not serialize {path.name}: " + " | ".join(res["errors"] or res["log_tail"][-3:]),
-                         "is it a CR2W resource (not raw/exported)?")
+                         "is it a complete CR2W resource (not raw/exported or truncated)?")
     return out
 
 
@@ -80,6 +81,8 @@ def load(path: Path) -> dict:
 def roundtrip(path: Path) -> dict:
     """CR2W -> JSON -> CR2W must give the same bytes; for a .json, JSON -> CR2W -> JSON must keep the data."""
     path = Path(path)
+    if not path.is_file():
+        raise ForgeError(f"no such file: {path}")
     with tempfile.TemporaryDirectory(prefix="cpforge-rt-") as td:
         t = Path(td)
         if not is_cr2w(path):
@@ -412,7 +415,7 @@ def references(doc: dict) -> list[tuple[str, int]]:
             v = str(o.get("$value", ""))
             if not v or v == "0":
                 return
-            if o.get("$storage") == "uint64" or v.isdigit():
+            if v.isdigit():  # a hash (uint64 storage); name_hashes may have put a name there instead
                 out.append((v, int(v)))
             else:
                 out.append((v, resource_hash(v)))

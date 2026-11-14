@@ -1,6 +1,6 @@
 # STATE
 
-Version: **0.3.0** (2026-11-14)
+Version: **0.4.0** (2026-11-15)
 
 ## Goal
 
@@ -8,20 +8,17 @@ A local, agent-friendly toolkit for every kind of Cyberpunk 2077 mod:
 redscript, CET, TweakXL, ArchiveXL, RED4ext, Input Loader, Mod Settings,
 Audioware, REDmod. Facts come from the installed game.
 
-## In progress (unreleased, toward 0.4.0)
+## Done (0.4.0)
 
-- Done, tested: TWEAK-FLAT false positive fixed (YAML existence checks and
-  `tweak exists` also use the vanilla .tweak source index; Vehicle.vehicle_list).
-- Done, calibrated: `cpforge res check|inspect` (resource.py): handle/BufferId/
-  uint64-path rules, mesh chunkMaterials/entries, CruidDict, components vs
-  chunks, light zones, proxy, reference resolution against source/archive and
-  game archives. 79 real files (Sonata build + vanilla Hella) all clean.
-- Broken: `cpforge res roundtrip` on CR2W files still errors after the
-  output-dir fix; debug `serialize()` (run the WolvenKit command by hand).
-- Not started: fold the car session's `docs/CAR_MOD_LESSONS.md` (Sonata
-  project) into knowledge/vehicles.md; offline tests for resource.py
-  (synthetic JSON); tweak resource-path check in `check`; vehicle_list append
-  check; reply to the car session; bump 0.4.0, CHANGELOG, release.
+- `cpforge res check|inspect|roundtrip` (resource.py), calibrated on 79 real
+  files (the Sonata car build + vanilla Archer Hella): all clean, 0 unresolved
+  references; roundtrip byte-identical on the car's .app, .ent and 2 meshes; a
+  copied appearance with repeated handles is flagged and WolvenKit indeed fails
+  on it (RedFileDto).
+- `check`: TWEAK-RESOURCE, VEHICLE-NOT-LISTED; YAML/`tweak exists` consult the
+  vanilla .tweak source index (Vehicle.vehicle_list false positive gone).
+  `cpforge check` on the Sonata project: 0 errors, 0 warnings.
+- `knowledge/vehicles.md` rewritten from the car project's lessons doc.
 
 ## Done (0.3.0)
 
@@ -70,6 +67,9 @@ Audioware, REDmod. Facts come from the installed game.
 | Native-only call check | tool-validated | 0 findings over installed mods; LogChannel in a scratch project flagged on 2.5 |
 | api diff | tool-validated (synthetic) | offline test with two stored indexes; on the dev machine only the 2.5 index exists, so no real patch-to-patch diff yet |
 | Install twice / uninstall | CI | `install` job on windows-latest |
+| res check / inspect | tool-validated | 79 real resources (car build + vanilla Hella) clean; synthetic rule tests offline |
+| res roundtrip | tool-validated | WolvenKit 9.1 on the dev machine; not in CI (no WolvenKit there) |
+| Vehicle knowledge | static | from a complete car build; the car is not tested in game yet |
 
 ## Next
 

@@ -30,6 +30,10 @@
 - **Native-only calls are judged by declaration origin.** A global is flagged
   only when metadata.json lists it and no vanilla script declares it; redscript
   intrinsics and mod-defined script functions are never flagged.
+- **Resource rules are calibrated on vanilla files.** A `res check` rule ships
+  only if every vanilla Archer Hella file passes it; missing `base\`/`ep1\`
+  references are listed, not warned, because vanilla files reference a few
+  resources that never shipped.
 - **Releases come from tags on green commits.** The Release workflow checks the
   tag against `__version__` and CHANGELOG and requires a successful CI run on
   that SHA before it publishes.
