@@ -85,10 +85,12 @@ def _tweak_check(files: list[Path], rep: Report, root: Path, game: Path | None, 
         rep.gap("tweak references", "game not found, cannot check record names")
         return
     installed = installed_yaml_records(game)
-    packages = {n.split(".")[0] for n in (idx["tweak_records"] if idx else {})}
+    sources = idx["tweak_records"] if idx else {}
+    packages = {n.split(".")[0] for n in sources}
 
     def exists(name: str) -> bool:
-        return name in project_records or tdb.exists(name) or name in installed
+        # Some vanilla records live only in the .tweak sources, not in tweakdb.bin (Vehicle.vehicle_list on 2.5).
+        return name in project_records or tdb.exists(name) or name in installed or name in sources
 
     for f, recs, doc in parsed:
         fr = rel(f, root)

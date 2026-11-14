@@ -142,14 +142,57 @@ def cmd_tweak(args):
             out["changed_by_installed_tweaks"] = mods
         return out, (0 if out["exists_in_tweakdb"] or src or mods else 1)
     if args.action == "exists":
-        res = {n: tdb.exists(n) for n in args.query.split(",")}
-        return {"exists": res, "sources": tdb.sources}, (0 if all(res.values()) else 1)
+        names = [n.strip() for n in args.query.split(",") if n.strip()]
+        in_bin = {n: tdb.exists(n) for n in names}
+        # Some vanilla records exist only in the .tweak sources (Vehicle.vehicle_list on 2.5).
+        in_src = {n: bool(idx and n in idx["tweak_records"]) for n in names}
+        res = {n: in_bin[n] or in_src[n] for n in names}
+        where = {n: ("tweakdb.bin" if in_bin[n] else "vanilla .tweak source" if in_src[n] else None) for n in names}
+        return {"exists": res, "found_in": where, "sources": tdb.sources + (["index of tools/redmod/tweaks"] if idx else [])}, \
+            (0 if all(res.values()) else 1)
     words = args.query.lower().split()
     names = tdb.names() or (list(idx["tweak_records"]) if idx else [])
     hits = [n for n in names if all(w in n.lower() for w in words)]
     hits.sort(key=lambda n: (len(n), n))
     return {"query": args.query, "count": len(hits), "results": hits[: args.limit],
             "name_source": tdb.sources or (["index of tools/redmod/tweaks"] if idx else [])}, 0
+
+
+def cmd_res(args):
+    from . import resource as R
+    results = []
+    game_map = None
+    if args.action != "roundtrip" and not args.no_game:
+        from .game import find_game
+        try:
+            game_map = R.game_hashes(find_game(args.game)[0])
+        except ForgeError:
+            game_map = None  # reported per file as references.unresolved = null
+    trees: dict[str, dict] = {}
+    for f in args.files:
+        p = Path(f)
+        if args.action == "roundtrip":
+            results.append(R.roundtrip(p))
+            continue
+        root = Path(args.root) if args.root else R.project_root_of(p)
+        names = trees.setdefault(str(root), R.tree_hashes(root)) if root else {}
+        try:
+            doc = R.load(p)
+        except ForgeError as e:
+            results.append({"file": str(p), "ok": False, "errors": [{"code": "RES-READ", "message": str(e)}],
+                            "warnings": [], "fix": e.fix})
+            continue
+        ref_findings, ref_summary = R.reference_check(doc, names, game_map)
+        R.name_hashes(doc, names)
+        r = R.check(doc)
+        r["warnings"] += [{k: v for k, v in x.items() if k != "level"} for x in ref_findings]
+        r["references"] = ref_summary
+        r["file"] = str(p)
+        if args.action == "check":
+            r.pop("summary", None)
+        results.append(r)
+    ok = all(r.get("ok") for r in results)
+    return ({"results": results} if len(results) > 1 else results[0]), (0 if ok else 1)
 
 
 def cmd_hash(args):
@@ -314,6 +357,12 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("action", choices=["search", "show", "exists"], help="search <words> | show <Record> | exists <A,B>")
     s.add_argument("query", nargs="+", help="words, a record name, or comma-separated names")
     s.add_argument("--limit", type=int, default=60, help="max results")
+    s = add("res", cmd_res, "game resources via WolvenKit JSON: check, inspect (.mesh/.app/.ent), byte round trip")
+    s.add_argument("action", choices=["check", "inspect", "roundtrip"],
+                   help="check: structural rules | inspect: rules + summary (components, lights, slots) | roundtrip")
+    s.add_argument("files", nargs="+", help="CR2W resource files or their WolvenKit .json")
+    s.add_argument("--root", help="archive source root for resolving references (default: the <project>/source/archive the file is in)")
+    s.add_argument("--no-game", action="store_true", help="skip looking references up in the game's archives")
     s = add("hash", cmd_hash, "FNV-1a 64 resource-path hash, or TweakDBID with --tweakdb")
     s.add_argument("values", nargs="+", help="paths or record names")
     s.add_argument("--tweakdb", action="store_true", help="hash as TweakDB record names")

@@ -484,6 +484,19 @@ class ProjectTests(Base):
         self.assertTrue({"TWEAK-BASE", "TWEAK-TYPE", "RS-NO-METHOD"} <= codes, codes)
         self.assertFalse(r["ok"])
 
+    def test_yaml_flat_on_record_from_tweak_source_only(self):
+        # Vehicle.vehicle_list is defined in vanilla .tweak sources but not stored in tweakdb.bin (seen on 2.5).
+        (self.game / "tools/redmod/tweaks/base/vehicle_list.tweak").write_text(
+            "package Vehicle\n\nvehicle_list\n{\n\tfk< Vehicle >[] list = [];\n}\n", encoding="utf-8")
+        out, _ = self.new(["tweakxl"])
+        index.build(self.game)
+        y = out / "game/r6/tweaks/TestMod/TestMod.yaml"
+        y.write_text("Vehicle.vehicle_list.list:\n  - !append Vehicle.v_test\nVehicle.v_test:\n  $base: Character.Judy\n",
+                     encoding="utf-8")
+        r = check.check_project(out)
+        self.assertEqual([w for w in r["warnings"] if w["code"] == "TWEAK-FLAT"], [])
+        self.assertEqual(r["errors"], [], r["errors"])
+
     def test_check_catches_secret_and_version_mirror(self):
         out, _ = self.new(["redmod", "redscript"])
         info = out / "game/mods/TestMod/info.json"

@@ -8,6 +8,21 @@ A local, agent-friendly toolkit for every kind of Cyberpunk 2077 mod:
 redscript, CET, TweakXL, ArchiveXL, RED4ext, Input Loader, Mod Settings,
 Audioware, REDmod. Facts come from the installed game.
 
+## In progress (unreleased, toward 0.4.0)
+
+- Done, tested: TWEAK-FLAT false positive fixed (YAML existence checks and
+  `tweak exists` also use the vanilla .tweak source index; Vehicle.vehicle_list).
+- Done, calibrated: `cpforge res check|inspect` (resource.py): handle/BufferId/
+  uint64-path rules, mesh chunkMaterials/entries, CruidDict, components vs
+  chunks, light zones, proxy, reference resolution against source/archive and
+  game archives. 79 real files (Sonata build + vanilla Hella) all clean.
+- Broken: `cpforge res roundtrip` on CR2W files still errors after the
+  output-dir fix; debug `serialize()` (run the WolvenKit command by hand).
+- Not started: fold the car session's `docs/CAR_MOD_LESSONS.md` (Sonata
+  project) into knowledge/vehicles.md; offline tests for resource.py
+  (synthetic JSON); tweak resource-path check in `check`; vehicle_list append
+  check; reply to the car session; bump 0.4.0, CHANGELOG, release.
+
 ## Done (0.3.0)
 
 - `vehicle` route + `knowledge/vehicles.md`, seeded from the Sonata vehicle
