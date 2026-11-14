@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cyberpunk-forge"
+dynamic = ["version"]
+description = "Local-first toolkit for making, checking and shipping Cyberpunk 2077 mods"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Cyberpunk Forge contributors"}]
+dependencies = ["PyYAML>=6"]
+
+[project.scripts]
+cpforge = "cpforge.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "cpforge.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cpforge = ["knowledge/*", "templates/**/*", "templates/**/.*"]

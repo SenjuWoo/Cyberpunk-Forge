@@ -1,0 +1,6 @@
+{
+  "title": "REDmod package (official loader)",
+  "requires": [{"id": "redmod"}],
+  "version_files": [{"path": "game/mods/__ID__/info.json", "pattern": "\"version\"\\s*:\\s*\"(?P<v>[^\"]+)\""}],
+  "notes": "Players must have the REDmod DLC and deploy mods from the launcher. Prefer redscript/TweakXL unless the mod must be REDmod."
+}

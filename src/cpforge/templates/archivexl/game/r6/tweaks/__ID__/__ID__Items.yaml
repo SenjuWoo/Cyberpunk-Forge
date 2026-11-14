@@ -1,0 +1,8 @@
+# {{NAME}} - the item record. entityName must match a row in the factory .csv,
+# appearanceName the appearance prefix in your .app, displayName the
+# secondaryKey of an entry in the localization .json.
+Items.{{ID}}_Item:
+  $base: Items.GenericFaceClothing
+  entityName: {{ID_LOWER}}_item
+  appearanceName: {{ID_LOWER}}_item_
+  displayName: {{ID}}-Item-Name

@@ -1,0 +1,144 @@
+{
+  "schema": 1,
+  "note": "Hard facts the forge relies on. 'tier' uses the evidence ladder: tool-validated = checked by running code against an installed game; source = read from upstream source code; docs = upstream docs/wiki; observed = seen in an installed mod or log, not documented. Re-check anything marked docs or observed when a framework updates.",
+  "facts": {
+    "game.versions": {
+      "tier": "source",
+      "source": "https://github.com/WopsS/RED4ext.SDK/blob/master/include/RED4ext/Api/v1/Runtime.hpp",
+      "value": {
+        "3.0.74.53121": "2.0", "3.0.74.63017": "2.01", "3.0.75.25522": "2.02",
+        "3.0.76.4238": "2.1", "3.0.76.41558": "2.11", "3.0.76.55031": "2.12", "3.0.76.64179": "2.12 hotfix 1",
+        "3.0.77.64623": "2.13", "3.0.78.41888": "2.2", "3.0.78.57301": "2.21",
+        "3.0.80.33925": "2.3", "3.0.80.51928": "2.31", "3.0.88.46235": "2.5"
+      },
+      "detail": "Key is the four-part file version of bin/x64/Cyberpunk2077.exe. Windows Explorer shows 3.0.88.46235 as '3.0.5813403' (build << 16 | revision). tool-validated: an installed 2.5 exe reports 3.0.88.46235."
+    },
+    "game.phantom_liberty_marker": {"tier": "observed", "value": "archive/pc/ep1"},
+    "mod.surfaces": {
+      "tier": "docs",
+      "source": "https://wiki.redmodding.org/cyberpunk-2077-modding/ and each framework's README",
+      "value": {
+        "r6/scripts/<Mod>/": "redscript (.reds), compiled at game start by redscript",
+        "r6/tweaks/<Mod>/": "TweakXL (.yaml/.yml or .tweak)",
+        "r6/input/": "Input Loader XML",
+        "r6/audioware/<Mod>/": "Audioware manifests (.yaml) and audio files",
+        "archive/pc/mod/": "packed .archive files plus ArchiveXL .archive.xl next to them",
+        "bin/x64/plugins/cyber_engine_tweaks/mods/<Mod>/": "CET Lua mod; init.lua is the entry point",
+        "red4ext/plugins/<Mod>/": "RED4ext native plugin DLL (plus optional .reds the plugin ships)",
+        "mods/<Mod>/": "REDmod: info.json plus archives/, scripts/, tweaks/, customSounds/"
+      }
+    },
+    "archive.format": {
+      "tier": "tool-validated",
+      "source": "https://github.com/WolvenKit/WolvenKit/blob/main/WolvenKit.RED4/Archive/IO/ArchiveReader.cs",
+      "value": {
+        "header": "u32 magic 0x52414452 'RDAR', u32 version (12), u64 indexPosition, u32 indexSize, u64 debugPosition, u32 debugSize, u64 fileSize, u32 customDataLength",
+        "index": "at indexPosition: u32 fileTableOffset, u32 fileTableSize, u64 crc, u32 fileEntryCount, u32 fileSegmentCount, u32 resourceDependencyCount",
+        "file_entry": "56 bytes: u64 nameHash (FNV-1a 64 of the resource path), i64 timestamp (FILETIME), u32 inlineBufferSegments, u32 segmentsStart, u32 segmentsEnd, u32 dependenciesStart, u32 dependenciesEnd, 20 bytes SHA1",
+        "segment": "16 bytes: u64 offset, u32 zsize, u32 size",
+        "dependency": "8 bytes: u64 hash",
+        "path_hash": "FNV-1a 64 (offset 0xCBF29CE484222325, prime 0x100000001B3) over the lowercase path with backslash separators"
+      },
+      "detail": "Checked against an installed 2.5 game: basegame_4_gamedata.archive indexSize equals 28 + 56*entries + 16*segments + 8*deps exactly; 39 of 39 factory .csv paths from installed .archive.xl files hashed to entries of their archives."
+    },
+    "tweakdb.id": {
+      "tier": "tool-validated",
+      "source": "https://github.com/WopsS/RED4ext.SDK/blob/master/include/RED4ext/NativeTypes-inl.hpp",
+      "value": "low 32 bits: standard CRC-32 (zlib) of the UTF-8 name; bits 32-39: byte length; bytes 5-7: tdbOffset (big-endian, ignored for equality)",
+      "detail": "Checked: Character.Judy, Items.Preset_Lexington_Default and Vehicle.v_sport2_quadra_type66_player found in r6/cache/tweakdb.bin."
+    },
+    "tweakdb.bin": {
+      "tier": "tool-validated",
+      "source": "https://github.com/WolvenKit/WolvenKit/blob/main/WolvenKit.RED4/TweakDB/TweakDBReader.cs",
+      "value": {
+        "header": "u32 magic 0x0BB1DB47, i32 blobVersion (8), i32 parserVersion (4), u32 recordsChecksum, i32 flatsOffset, i32 recordsOffset, i32 queriesOffset, i32 groupTagsOffset",
+        "records": "at recordsOffset: i32 count, then count x (u64 TweakDBID, u32 typeKey)",
+        "type_key": "Murmur3-32, seed 0x5EEDBA5E, of the bare type name (Character for gamedataCharacter_Record)"
+      },
+      "detail": "Checked: 196423 records in the 2.5 tweakdb.bin; typeKey of Character.Judy = murmur3('Character'), of a vehicle = murmur3('Vehicle')."
+    },
+    "tweakdb.str": {
+      "tier": "tool-validated",
+      "source": "observed in r6/cache/modded/tweakdb_ep1.str (written when REDmod deploys)",
+      "value": "u32 magic 0x0BB1DB57, u32 version 1, u32 recordNameCount, u32 flatNameCount, u32 queryNameCount, then names as RED strings: first byte bit 7 = ASCII flag, bit 6 = more length bytes follow, low 6 bits = length",
+      "detail": "Gives the full list of record and flat names; only present after a REDmod deploy."
+    },
+    "redmod.sources": {
+      "tier": "observed",
+      "value": {
+        "tools/redmod/scripts/**/*.script": "vanilla game script source (CDPR script syntax: 'function', 'var x : T', 'importonly class')",
+        "tools/redmod/tweaks/**/*.tweak": "vanilla TweakDB source ('package X', 'name : Type { ... }')",
+        "tools/redmod/metadata.json": "native RTTI dump: classes (parent, properties, functions), enums, global_functions, bitfields, aliases"
+      },
+      "detail": "Installed by the free REDmod DLC. The forge indexes them locally; they are never copied into a project or this repository."
+    },
+    "redscript.continue": {
+      "tier": "docs",
+      "source": "https://github.com/jac3km4/redscript/releases/tag/v1.0.0",
+      "value": "'continue' in loops is supported from redscript 1.0.0. The 0.5.x compilers reject it (observed: UNRESOLVED_REF with 0.5.31).",
+      "detail": "Write loops without 'continue' when the mod must work on 0.5.x."
+    },
+    "redscript.annotations": {
+      "tier": "docs",
+      "source": "https://wiki.redmodding.org/scripting-cyberpunk/redscript/language-reference/hook-annotations.md",
+      "value": ["@wrapMethod(Class)", "@replaceMethod(Class)", "@addMethod(Class)", "@addField(Class)", "@replaceGlobal()"],
+      "detail": "Two mods using @replaceMethod on the same Class.method conflict: only one replacement survives. @wrapMethod stacks."
+    },
+    "redscript.scc_cli": {
+      "tier": "tool-validated",
+      "source": "observed: engine/tools/scc.exe shipped by redscript 0.5.x",
+      "value": "scc.exe -compile <scriptsDir> -compilePathsFile <file listing extra .reds dirs> -outputCacheFile <out>. The base bundle is read from cache/final.redscripts next to the scripts directory (r6/scripts -> r6/cache), so a scratch compile uses <tmp>/scripts and <tmp>/cache.",
+      "detail": "The standalone compiler can overflow its stack on a full load order of several hundred mods (the in-game compile does not). Compile a mod with only its dependencies."
+    },
+    "redscript.logging": {
+      "tier": "tool-validated",
+      "source": "cpforge compile against the 2.5 vanilla bundle",
+      "value": "FTLog(s\"...\") compiles with no extra mod. LogChannel(n\"DEBUG\", ...) is native-only in vanilla and fails with UNRESOLVED_FN unless a mod declares it (e.g. a logging-headers library); Codeware provides ModLog(n\"Mod\", ...).",
+      "detail": "Native functions listed in tools/redmod/metadata.json are not callable from redscript until something declares them."
+    },
+    "redscript.log": {"tier": "docs", "source": "https://github.com/jac3km4/redscript", "value": "r6/logs/redscript_rCURRENT.log"},
+    "cet.layout": {
+      "tier": "docs",
+      "source": "https://wiki.redmodding.org/scripting-cyberpunk/cyber-engine-tweaks/first-steps/mod-structure.md",
+      "value": "bin/x64/plugins/cyber_engine_tweaks/mods/<Mod>/init.lua; a mod reads and writes only inside its own folder",
+      "detail": "Events: onInit, onUpdate, onDraw, onOverlayOpen, onOverlayClose, onShutdown, onTweak."
+    },
+    "cet.events": {"tier": "docs", "source": "https://wiki.redmodding.org/scripting-cyberpunk/cyber-engine-tweaks/cet-functions/events.md",
+      "value": ["onInit", "onUpdate", "onDraw", "onOverlayOpen", "onOverlayClose", "onShutdown", "onTweak"]},
+    "cet.logs": {"tier": "docs", "source": "https://wiki.redmodding.org/scripting-cyberpunk/cyber-engine-tweaks/first-steps/logs-debug.md",
+      "value": ["mods/<Mod>/<Mod>.log", "scripting.log", "cyber_engine_tweaks.log"]},
+    "tweakxl.yaml": {
+      "tier": "docs",
+      "source": "https://github.com/psiberx/cp2077-tweak-xl/wiki/YAML-Tweaks",
+      "value": {
+        "keys": ["$type", "$base", "$instances"],
+        "array_tags": ["!append", "!prepend", "!append-once", "!prepend-once", "!append-from", "!prepend-from", "!remove"],
+        "folder": "r6/tweaks (subfolders allowed), .yaml/.yml; .tweak files use the RED tweak syntax"
+      }
+    },
+    "archivexl.xl": {
+      "tier": "docs",
+      "source": "https://github.com/psiberx/cp2077-archive-xl/wiki",
+      "value": "<name>.archive.xl next to <name>.archive. Documented keys include factories (list of .csv paths in the archive) and localization.onscreens (language -> .json path)."
+    },
+    "red4ext.sdk": {
+      "tier": "source",
+      "source": "https://github.com/WopsS/RED4ext.Example.CMake and RED4ext.SDK v1 headers",
+      "value": {
+        "exports": "bool Main(RED4ext::v1::PluginHandle, RED4ext::v1::EMainReason, const RED4ext::v1::Sdk*); void Query(RED4ext::v1::PluginInfo*); uint32_t Supports()",
+        "macros": "RED4EXT_C_EXPORT, RED4EXT_CALL, RED4EXT_V1_SEMVER, RED4EXT_V1_RUNTIME_VERSION_LATEST, RED4EXT_V1_SDK_VERSION_CURRENT, RED4EXT_API_VERSION_1",
+        "cmake": "FetchContent RED4ext.SDK, link RED4ext::SDK, C++20, x64",
+        "runtime_note": "SDK tag 1.0.0 defines LATEST as 2.31; 2.5 support landed in commit 0f5eba4 (2026-10-22). A plugin declaring runtime 2.31 is refused by RED4ext on a 2.5 game."
+      }
+    },
+    "redmod.info_json": {"tier": "docs", "source": "https://wiki.redmodding.org/cyberpunk-2077-modding/for-mod-creators-theory/modding-tools/redmod",
+      "value": "mods/<Mod>/info.json with name and version (required), description, customSounds (array, used by audio mods)"},
+    "input_loader.xml": {"tier": "docs", "source": "https://github.com/jackhumbert/cyberpunk2077-input-loader",
+      "value": "r6/input/*.xml with a <bindings> root holding <context name=...> (append=\"true\" to extend an existing context) with <action name=... map=...> and <include name=...>"},
+    "mod_settings": {"tier": "docs", "source": "https://github.com/jackhumbert/mod_settings",
+      "value": "@runtimeProperty(\"ModSettings.mod\", \"Mod name\") and ModSettings.displayName/description/category/min/max/step on public fields of a class; register with ModSettings.RegisterListenerToClass(this)",
+      "detail": "category, step, min and max are used by many installed mods (observed); the README documents mod, displayName and displayValues."},
+    "audioware.manifest": {"tier": "observed", "source": "installed Audioware mods",
+      "value": "r6/audioware/<Mod>/<name>.yaml: 'version: 1.0.0' then 'sfx:' mapping an event name to {file: <audio file next to the yaml>, settings: {volume: 1.0}}"}
+  }
+}

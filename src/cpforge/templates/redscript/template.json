@@ -1,0 +1,5 @@
+{
+  "title": "redscript mod (game logic hooks)",
+  "requires": [{"id": "redscript", "min": "0.5.31"}],
+  "notes": "Starts with a @wrapMethod hook on PlayerPuppet.OnGameAttached; cpforge check verifies hook targets against your install."
+}

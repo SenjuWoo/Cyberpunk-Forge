@@ -1,0 +1,13 @@
+# {{NAME}} - TweakXL edits.
+# Find records:        cpforge tweak search lexington
+# Read vanilla values: cpforge tweak show Items.Preset_Lexington_Default
+# Validate:            cpforge check   ($type, $base and record references are checked against tweakdb.bin)
+#
+# Change one value of an existing record (a "flat"), e.g.:
+#   Items.Preset_Lexington_Default.<field>: <value>
+#
+# Array edits use tags: !append, !append-once, !prepend, !remove ...
+
+# A new record cloned from an existing one. Add the fields you want to differ.
+Items.{{ID}}_Lexington:
+  $base: Items.Preset_Lexington_Default

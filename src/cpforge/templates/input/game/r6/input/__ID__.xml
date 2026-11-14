@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<bindings>
+    <!-- input context with one action -->
+    <context name="{{ID}}Context">
+        <action name="{{ID}}_Activate" map="{{ID}}_Activate_Key" />
+    </context>
+
+    <!-- active while walking around -->
+    <context name="Exploration" append="true">
+        <include name="{{ID}}Context" />
+    </context>
+
+    <!-- default key; overridableUI lets players rebind it in the game's key menu -->
+    <mapping name="{{ID}}_Activate_Key" type="Button">
+        <button id="IK_F7" overridableUI="{{ID_LOWER}}Activate" />
+    </mapping>
+</bindings>

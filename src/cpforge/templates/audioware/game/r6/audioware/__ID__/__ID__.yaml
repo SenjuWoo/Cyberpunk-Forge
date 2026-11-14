@@ -1,0 +1,7 @@
+# {{NAME}} - Audioware manifest. Each sfx key is the event name you play.
+version: 1.0.0
+sfx:
+  {{ID_LOWER}}_hello:
+    file: hello.wav
+    settings:
+      volume: 1.0

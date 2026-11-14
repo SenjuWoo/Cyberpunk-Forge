@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.10', '3.13']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: python -m pip install -e .
+      - name: Test suite
+        run: python tests/run_tests.py
+      - name: CLI smoke
+        run: |
+          cpforge capabilities
+          cpforge plan "add a new clothing item"
+
+  templates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install forge and Lua
+        run: |
+          python -m pip install -e .
+          sudo apt-get update -qq && sudo apt-get install -y -qq luajit
+      - name: Scaffold every template, check and package
+        env:
+          CPFORGE_LUA: luajit
+        run: |
+          cpforge new "CI Mod" --kind redscript --kind modsettings --kind cet --kind tweakxl --kind input --kind archivexl --kind redmod --kind audioware --out ci-mod
+          cd ci-mod
+          cpforge check > check.json || true
+          python -c "import json,sys; d=json.load(open('check.json')); print(json.dumps(d, indent=1)); sys.exit(1 if d['errors'] else 0)"
+          python -c "import json; d=json.load(open('check.json')); assert any(c=='lua syntax' for c in d['checked']), 'lua syntax was not checked'"
+          cpforge package
+
+  red4ext-template:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python -m pip install -e .
+      - name: Build the RED4ext template with CMake + MSVC
+        shell: pwsh
+        run: |
+          cpforge new "CI Plugin" --kind red4ext --out ci-plugin
+          Set-Location ci-plugin
+          cpforge build | Tee-Object build.json
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          if (-not (Test-Path game/red4ext/plugins/CIPlugin/CIPlugin.dll)) { throw 'DLL missing' }

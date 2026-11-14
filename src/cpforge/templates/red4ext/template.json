@@ -1,0 +1,6 @@
+{
+  "title": "RED4ext native plugin (C++20, CMake, MSVC x64)",
+  "requires": [{"id": "red4ext", "min": "1.31.0"}],
+  "version_files": [{"path": "source/red4ext/CMakeLists.txt", "pattern": "project\\(\\w+ VERSION (?P<v>\\d+\\.\\d+\\.\\d+)"}],
+  "notes": "RED4ext.SDK is pinned to commit 0f5eba4 (game 2.5 support). cpforge build needs CMake and Visual Studio Build Tools; the DLL lands in game/red4ext/plugins/<Mod>/."
+}

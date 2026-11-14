@@ -1,0 +1,5 @@
+{
+  "title": "Input Loader key binding + redscript listener",
+  "requires": [{"id": "input_loader"}, {"id": "redscript", "min": "0.5.31"}],
+  "notes": "Declares an action in r6/input and reacts to it on the player with RegisterInputListener/OnAction."
+}

@@ -1,0 +1,5 @@
+{
+  "title": "Audioware sound pack",
+  "requires": [{"id": "audioware"}],
+  "notes": "Manifest layout taken from installed Audioware mods: version + sfx map of event name -> file/settings. Replace the placeholder WAV."
+}

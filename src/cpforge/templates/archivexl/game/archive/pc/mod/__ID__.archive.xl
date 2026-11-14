@@ -1,0 +1,7 @@
+# {{NAME}} - ArchiveXL. Paths are resource paths inside {{ID}}.archive.
+# cpforge check confirms each one is really in the archive once it is built.
+factories:
+  - {{ID_LOWER}}\factories\{{ID_LOWER}}.csv
+localization:
+  onscreens:
+    en-us: {{ID_LOWER}}\localization\en-us.json

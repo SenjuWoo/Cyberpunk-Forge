@@ -1,0 +1,5 @@
+{
+  "title": "ArchiveXL item (new clothing/appearance: archive + .xl + TweakXL record)",
+  "requires": [{"id": "archivexl", "min": "1.28.0"}, {"id": "tweakxl", "min": "1.12.0"}],
+  "notes": "Resources are made in WolvenKit. Put them under source/archive/; cpforge build packs them with the WolvenKit CLI."
+}

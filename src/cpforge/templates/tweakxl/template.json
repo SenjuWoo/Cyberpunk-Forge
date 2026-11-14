@@ -1,0 +1,5 @@
+{
+  "title": "TweakXL data mod (TweakDB records and values)",
+  "requires": [{"id": "tweakxl", "min": "1.12.0"}],
+  "notes": "Find records with cpforge tweak search, read vanilla values with cpforge tweak show."
+}

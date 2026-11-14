@@ -1,0 +1,5 @@
+{
+  "title": "Mod Settings menu (redscript)",
+  "requires": [{"id": "redscript", "min": "0.5.31"}, {"id": "mod_settings"}],
+  "notes": "Settings live on a ScriptableSystem: it is created after Mod Settings has loaded saved values, so they never revert."
+}

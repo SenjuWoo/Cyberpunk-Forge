@@ -1,0 +1,5 @@
+{
+  "title": "Cyber Engine Tweaks Lua mod (overlay window + hotkey)",
+  "requires": [{"id": "cet", "min": "1.38.0"}],
+  "notes": "init.lua is the entry point; a CET mod can only read and write inside its own folder."
+}
