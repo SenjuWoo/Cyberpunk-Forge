@@ -3,6 +3,13 @@
 Files in `r6/tweaks/<Mod>/` as `.yaml`/`.yml` (or `.tweak` RED syntax). The
 cheapest, most patch-proof way to change items, stats, prices, loot, NPC records.
 
+`cpforge check` parses both. `.tweak` files get a structural check (records,
+`[ attributes ]`, typed fields such as `fk< StatModifier >[]`, inline records
+with `{ ... } : Base`, top-level flats, missing `;` or `,`, unclosed strings and
+brackets) with the line of the first error, then base and reference checks
+against TweakDB and installed tweaks. Field types are not checked; TweakXL
+reports those in its log at game start.
+
 ## Find and read
 
 - `cpforge tweak search lexington preset` - record names (from REDmod's

@@ -107,6 +107,17 @@
       "value": ["onInit", "onUpdate", "onDraw", "onOverlayOpen", "onOverlayClose", "onShutdown", "onTweak"]},
     "cet.logs": {"tier": "docs", "source": "https://wiki.redmodding.org/scripting-cyberpunk/cyber-engine-tweaks/first-steps/logs-debug.md",
       "value": ["mods/<Mod>/<Mod>.log", "scripting.log", "cyber_engine_tweaks.log"]},
+    "tweak.source_syntax": {
+      "tier": "tool-validated",
+      "source": "cpforge tweaksrc parser run over a 2.5 install",
+      "value": {
+        "constructs": ["package/using lines without ';'", "[ notQueryable ] before a record", "Name : Base { }", "Name { } (no base)",
+                       "Package.Name : Base { } (dotted, no package line)", "typed fields: CName[], fk< X >[], float",
+                       "= += -=", "inline records { ... } with optional ': Base' suffix", "vectors ( x, y, z )",
+                       "top-level flats: float name = 1.f;", "trailing commas in lists", "backslashes in strings are literal"],
+        "corpus": "2753 vanilla tools/redmod/tweaks files (76398 records) and 71 installed mod files: 0 findings"
+      }
+    },
     "tweakxl.yaml": {
       "tier": "docs",
       "source": "https://github.com/psiberx/cp2077-tweak-xl/wiki/YAML-Tweaks",

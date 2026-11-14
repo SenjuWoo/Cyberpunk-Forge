@@ -24,7 +24,8 @@ your patch.
 | Start a mod from a template | `cpforge new "My Mod" --kind redscript --kind modsettings` |
 | Look up real classes, methods, fields, enums | `cpforge api search OnAction`, `cpforge api class PlayerPuppet` |
 | Look up TweakDB records and their vanilla source | `cpforge tweak search lexington`, `cpforge tweak show Items.Preset_Lexington_Default` |
-| Validate a project against the installed game | `cpforge check --compile` |
+| Validate a project against the installed game (hooks, records, `.yaml` and `.tweak` tweaks, native-only calls) | `cpforge check --compile` |
+| What did a game patch remove or change? Which of my hooks break? | `cpforge api versions`, `cpforge api diff 2.31 2.5 --project .` |
 | Compile redscript with the game's own compiler (scratch copy) | `cpforge compile` |
 | Build a RED4ext plugin (CMake) or pack an archive (WolvenKit CLI) | `cpforge build` |
 | Release zip (deterministic, validated, with receipt) | `cpforge package` |

@@ -4,16 +4,13 @@
 
 - Opt-in MCP server exposing the same commands (stdio, started by the user's
   agent only when needed).
-- RED .tweak syntax check (TweakXL `.tweak` files).
-- Static check for calls to native-only functions (the `LogChannel` trap)
-  before compiling.
-- `cpforge api diff <old-version> <new-version>`: what a game patch removed or
-  changed, from two stored indexes.
 - WolvenKit CLI integration beyond `pack`: unbundle a resource for reference,
   convert to/from JSON for diffable edits.
 - Phantom Liberty / Dogtown helpers (district and fast-travel data from the
   install).
-- Install/update run twice in CI; release workflow with checksums.
+- Vehicle mods: workflow and checks for new and edited cars (being worked out
+  in a separate car-mod project; fold the findings in here).
+- Field-type check for `.tweak` and YAML values against the record schema.
 
 ## Not planned
 

@@ -16,11 +16,12 @@ import re
 import time
 from pathlib import Path
 
-from . import __version__
+from . import __version__, tweaksrc
 from .game import game_version
 from .util import ForgeError, home_dir, iter_files, read_text, record_type_key, rel
 
-INDEX_SCHEMA = 2
+# 3: .tweak records parsed by tweaksrc (base-less and dotted records included).
+INDEX_SCHEMA = 3
 MODS = r"(?:(?:public|private|protected|final|static|native|abstract|importonly|import|const|cb|exec|quest|persistent|editable|instanceeditable|inline|override|unsafe|optional|out|event|latent|replicated|saved|rep|default|edit|inlined|safe|noexport|export|virtual|callback|mutable)\s+)*"
 
 # CDPR .script syntax
@@ -170,26 +171,11 @@ def _merge_native(meta: dict, out: dict) -> None:
                                    "file": "", "line": 0})
 
 
-TWEAK_PKG = re.compile(r"^\s*package\s+([\w.]+)")
-TWEAK_REC = re.compile(r"^\s*([A-Za-z_][\w]*)\s*:\s*([\w.]+)\s*(\{)?\s*$")
-
-
 def parse_tweak_source(text: str, file: str, records: dict) -> None:
-    pkg = ""
-    depth = 0
-    for i, line in enumerate(text.splitlines()):
-        code = line.split("//", 1)[0]
-        if depth == 0:
-            p = TWEAK_PKG.match(code)
-            if p:
-                pkg = p.group(1)
-            else:
-                r = TWEAK_REC.match(code)
-                if r:
-                    name = f"{pkg}.{r.group(1)}" if pkg else r.group(1)
-                    records.setdefault(name, {"base": r.group(2), "file": file, "line": i + 1})
-        depth += code.count("{") + code.count("[") - code.count("}") - code.count("]")
-        depth = max(depth, 0)
+    """Records from one .tweak file, including base-less ones (`baseState {`) and dotted names."""
+    parsed = tweaksrc.parse(text)
+    for name, r in tweaksrc.full_names(parsed).items():
+        records.setdefault(name, {"base": r["base"], "file": file, "line": r["line"]})
 
 
 def build(game_root: Path, include_mods: bool = True) -> dict:
@@ -315,3 +301,138 @@ def search(idx: dict, query: str, kind: str = "any", limit: int = 40) -> list[di
             for f in c["fields"]:
                 bucket(f["name"], {"kind": "field", "name": f"{cname}.{f['name']}", "type": f["type"], "origin": f["origin"]})
     return (exact + prefix + sub)[:limit]
+
+
+# --- Patch diff between two stored indexes --------------------------------------
+
+GAME_ORIGINS = ("vanilla", "native", "native?")
+
+
+def stored_versions() -> list[dict]:
+    """Every index kept under the forge home (one per game exe version)."""
+    out = []
+    for p in sorted((home_dir() / "index").glob("*/index.json.gz")):
+        try:
+            with gzip.open(p, "rt", encoding="utf-8") as f:
+                head = json.load(f)
+        except (OSError, ValueError):
+            continue
+        gv = head.get("game_version") or {}
+        out.append({"version": p.parent.name, "patch": gv.get("patch"), "schema": head.get("schema"),
+                    "built": head.get("built"), "counts": head.get("counts"), "path": str(p)})
+    return out
+
+
+def load_version(spec: str) -> dict:
+    """Load a stored index by exe file version (3.0.88.46235) or patch label (2.5)."""
+    versions = stored_versions()
+    hit = [v for v in versions if spec in (v["version"], v["patch"])]
+    if not hit:
+        have = ", ".join(f"{v['version']} ({v['patch'] or '?'})" for v in versions) or "none"
+        raise ForgeError(f"no stored index for '{spec}' (stored: {have})",
+                         "run cpforge index on each game version you want to compare; old indexes are kept")
+    v = hit[-1]
+    with gzip.open(v["path"], "rt", encoding="utf-8") as f:
+        idx = json.load(f)
+    if not isinstance(idx.get("schema"), int) or idx["schema"] < 2:
+        raise ForgeError(f"index for {spec} is too old to compare", "rebuild it with cpforge index on that version")
+    return idx
+
+
+def _game_api(idx: dict) -> dict:
+    """Classes, members, enums and globals that come from the game itself, not from mods."""
+    classes = {}
+    for name, c in idx["api"]["classes"].items():
+        funcs = {f["name"]: f for f in c["funcs"] if f["origin"] in GAME_ORIGINS}
+        fields = {f["name"]: f for f in c["fields"] if f["origin"] in GAME_ORIGINS}
+        if c["origin"] in GAME_ORIGINS or funcs or fields:
+            classes[name] = {"parent": c.get("parent"), "funcs": funcs, "fields": fields}
+    enums = {n: e for n, e in idx["api"]["enums"].items() if e["origin"] in GAME_ORIGINS}
+    globals_ = {g["name"]: g for g in idx["api"]["globals"] if g["origin"] in GAME_ORIGINS}
+    return {"classes": classes, "enums": enums, "globals": globals_}
+
+
+def _sig(f: dict) -> str | None:
+    if f.get("params") in (None, "?") and f.get("ret") in (None, "?"):
+        return None  # native entries carry no signature
+    return f"({f.get('params', '')}) -> {f.get('ret', '')}"
+
+
+def diff(old: dict, new: dict, limit: int = 200) -> dict:
+    """What a patch removed, added or changed in the game's script API and TweakDB."""
+    a, b = _game_api(old), _game_api(new)
+    removed_classes = sorted(set(a["classes"]) - set(b["classes"]))
+    added_classes = sorted(set(b["classes"]) - set(a["classes"]))
+    removed_members, added_members, changed, reparented = [], [], [], []
+    for name in sorted(set(a["classes"]) & set(b["classes"])):
+        ca, cb = a["classes"][name], b["classes"][name]
+        if ca["parent"] and cb["parent"] and ca["parent"] != cb["parent"]:
+            reparented.append({"class": name, "old": ca["parent"], "new": cb["parent"]})
+        for kind in ("funcs", "fields"):
+            for m in sorted(set(ca[kind]) - set(cb[kind])):
+                removed_members.append({"class": name, "member": m, "kind": kind[:-1]})
+            for m in sorted(set(cb[kind]) - set(ca[kind])):
+                added_members.append({"class": name, "member": m, "kind": kind[:-1]})
+        for m in sorted(set(ca["funcs"]) & set(cb["funcs"])):
+            sa, sb = _sig(ca["funcs"][m]), _sig(cb["funcs"][m])
+            if sa and sb and sa != sb:
+                changed.append({"class": name, "member": m, "old": sa, "new": sb})
+    removed_values = []
+    for name in sorted(set(a["enums"]) & set(b["enums"])):
+        gone = sorted(set(a["enums"][name]["values"]) - set(b["enums"][name]["values"]))
+        if gone:
+            removed_values.append({"enum": name, "values": gone})
+    ta, tb = set(old.get("tweak_records", {})), set(new.get("tweak_records", {}))
+
+    def cap(items):
+        return items[:limit]
+
+    out = {
+        "old": {"version": (old.get("game_version") or {}).get("exe_file_version"), "patch": (old.get("game_version") or {}).get("patch")},
+        "new": {"version": (new.get("game_version") or {}).get("exe_file_version"), "patch": (new.get("game_version") or {}).get("patch")},
+        "summary": {"classes_removed": len(removed_classes), "classes_added": len(added_classes),
+                    "members_removed": len(removed_members), "members_added": len(added_members),
+                    "signatures_changed": len(changed), "classes_reparented": len(reparented),
+                    "enums_removed": len(set(a["enums"]) - set(b["enums"])), "enum_values_removed": sum(len(e["values"]) for e in removed_values),
+                    "globals_removed": len(set(a["globals"]) - set(b["globals"])),
+                    "globals_added": len(set(b["globals"]) - set(a["globals"])),
+                    "tweak_records_removed": len(ta - tb), "tweak_records_added": len(tb - ta)},
+        "classes_removed": cap(removed_classes), "classes_added": cap(added_classes),
+        "members_removed": cap(removed_members), "members_added": cap(added_members),
+        "signatures_changed": cap(changed), "classes_reparented": cap(reparented),
+        "enums_removed": cap(sorted(set(a["enums"]) - set(b["enums"]))), "enum_values_removed": cap(removed_values),
+        "globals_removed": cap(sorted(set(a["globals"]) - set(b["globals"]))),
+        "globals_added": cap(sorted(set(b["globals"]) - set(a["globals"]))),
+        "tweak_records_removed": cap(sorted(ta - tb)), "tweak_records_added": cap(sorted(tb - ta)),
+        "scope": "game API only (vanilla scripts + native RTTI) and vanilla TweakDB source; installed mods are ignored",
+    }
+    if old.get("schema") != new.get("schema"):
+        out["note"] = (f"indexes have different schemas ({old.get('schema')} vs {new.get('schema')}); tweak record "
+                       "counts may differ because of the parser, not the patch. Rebuild both for an exact record diff.")
+    return out
+
+
+def affected_hooks(d: dict, files: list[Path]) -> list[dict]:
+    """Hooks in the given .reds files that point at something the patch removed."""
+    gone_classes = set(d["classes_removed"])
+    gone_members = {(m["class"], m["member"]) for m in d["members_removed"]}
+    hits = []
+    for f in files:
+        lines = read_text(f).splitlines()
+        for i, line in enumerate(lines):
+            a = ANNOT.match(line.split("//", 1)[0])
+            if not a or not a.group(2):
+                continue
+            cls = a.group(2)
+            member = None
+            for nxt in lines[i + 1:i + 8]:
+                m = R_FUNC.match(nxt) or R_FIELD.match(nxt)
+                if m:
+                    member = m.group("name") if "name" in m.groupdict() else m.group(2)
+                    break
+            if cls in gone_classes:
+                hits.append({"file": str(f), "line": i + 1, "hook": a.group(1), "class": cls, "why": "class removed"})
+            elif member and (cls, member) in gone_members and a.group(1) in ("wrapMethod", "replaceMethod"):
+                hits.append({"file": str(f), "line": i + 1, "hook": a.group(1), "class": cls, "member": member,
+                             "why": "method removed"})
+    return hits

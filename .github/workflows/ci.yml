@@ -59,6 +59,35 @@ jobs:
           python -c "import json; d=json.load(open('check.json')); assert any(c=='lua syntax' for c in d['checked']), 'lua syntax was not checked'"
           cpforge package
 
+  install:
+    # The installer is also the updater: a second run over an existing install
+    # must converge (one PATH entry, a working launcher), and uninstall must
+    # remove what it added.
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Install twice, run, uninstall
+        shell: pwsh
+        run: |
+          ./Install.ps1 -SkipTests
+          ./Install.ps1 -SkipTests
+          $launcher = Join-Path $env:LOCALAPPDATA 'CyberpunkForge\bin\cpforge.cmd'
+          $out = & $launcher --version
+          if ($LASTEXITCODE -ne 0) { throw "launcher failed ($LASTEXITCODE)" }
+          Write-Host $out
+          $entries = @([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -eq (Split-Path $launcher) })
+          if ($entries.Count -ne 1) { throw "expected one PATH entry, found $($entries.Count)" }
+          & $launcher doctor | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "doctor failed ($LASTEXITCODE)" }
+          ./Uninstall.ps1
+          if (Test-Path $launcher) { throw 'launcher left behind' }
+          $left = @([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -eq (Split-Path $launcher) })
+          if ($left.Count) { throw 'PATH entry left behind' }
+
   red4ext-template:
     runs-on: windows-latest
     timeout-minutes: 30

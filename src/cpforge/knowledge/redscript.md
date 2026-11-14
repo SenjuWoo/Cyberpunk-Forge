@@ -34,6 +34,9 @@ Vanilla `event` functions are `cb func ... -> Bool` in redscript, e.g.
   `INVALID_CONSTANT`. Set the value in `OnAttach` instead.
 - Natives listed in `metadata.json` are not callable until declared. `LogChannel`
   is native-only in vanilla (`UNRESOLVED_FN`); `FTLog` compiles; Codeware adds `ModLog`.
+  `cpforge check` flags such calls before compiling: `RS-NATIVE-ONLY` (nothing
+  declares it) or `RS-NATIVE-VIA-MOD` (only an installed mod declares it, so it
+  compiles for you and fails for players without that mod).
 - The standalone compiler can overflow its stack on huge array literals, very
   long `+` string chains, or a whole 300-mod load order. Split literals (one
   `StrSplit` over a delimited string) and compile with only your dependencies.

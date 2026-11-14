@@ -4,6 +4,11 @@
    current for it.
 2. `cpforge index` - rebuild the API/TweakDB index for the new version (the
    index is stored per game version, so old and new can be compared).
+   `cpforge api diff <old> <new> --project <mod>` lists removed classes,
+   methods, enum values and TweakDB records, changed signatures, and the
+   project's hooks that point at something removed (`cpforge api versions`
+   shows which indexes are stored). Index the old patch before updating the
+   game, or keep its index folder from an earlier run.
 3. `cpforge check --compile` in the mod project:
    - static check flags hook targets (`@wrapMethod(Class)` method) that no longer
      exist and suggests close names

@@ -169,9 +169,63 @@ HOOK = re.compile(r"^\s*@(wrapMethod|replaceMethod|addMethod|addField|replaceGlo
 MEMBER = re.compile(r"^\s*(?:(?:public|private|protected|final|static|native|cb|const|persistent|exec|quest)\s+)*(func|let)\s+(\w+)")
 
 
-def static_check(files: list[Path], idx: dict | None, installed_version_hint: str | None = None) -> list[dict]:
-    """Check hook targets exist in the installed game, and flag syntax older compilers reject."""
+STRING_LIT = re.compile(r'[nsrt]?"(?:\\.|[^"\\])*"')
+CALL = re.compile(r"(?<![\w.:])([A-Za-z_]\w*)\s*\(")
+FUNC_DECL = re.compile(r"\bfunc\s+([A-Za-z_]\w*)\s*\(")
+DECL_LINE = re.compile(r"^\s*(?:(?:public|private|protected|static|final|native|cb|exec|quest)\s+)*func\b")
+
+
+def _global_origins(idx: dict | None) -> dict[str, set[str]]:
+    out: dict[str, set[str]] = {}
+    for g in (idx["api"]["globals"] if idx else []):
+        out.setdefault(g["name"], set()).add(g["origin"])
+    return out
+
+
+def native_only_calls(files: list[Path], idx: dict | None, deps: list[str] | None = None) -> list[dict]:
+    """Calls to engine functions that vanilla scripts never declare (the LogChannel trap).
+
+    A native global is callable from redscript only through a declaration. Vanilla
+    declares most; for the rest, a mod (often a logging-headers mod) adds `native func`.
+    Code that compiles on the author's machine then fails for players without that mod.
+    """
+    origins = _global_origins(idx)
+    if not origins:
+        return []
+    texts = [read_text(f) for f in files]
+    own = {m.group(1) for t in texts for m in FUNC_DECL.finditer(t)}
+    dep_names = {d.lower() for d in (deps or [])}
     findings = []
+    for f, text in zip(files, texts):
+        for i, line in enumerate(text.splitlines()):
+            code = STRING_LIT.sub('""', line.split("//", 1)[0])
+            if DECL_LINE.match(code):
+                continue
+            for m in CALL.finditer(code):
+                name = m.group(1)
+                o = origins.get(name)
+                if not o or "native" not in o or "vanilla" in o or name in own:
+                    continue
+                declared_by = sorted(x[4:] for x in o if x.startswith("mod:"))
+                if not declared_by:
+                    findings.append({"level": "error", "file": str(f), "line": i + 1, "code": "RS-NATIVE-ONLY",
+                                     "message": f"{name} is native-only: neither vanilla scripts nor any installed mod "
+                                                f"declares it, so redscript cannot call it (use FTLog for logging, or "
+                                                f"declare it with 'native func' and test that it resolves)"})
+                elif not dep_names & {d.lower() for d in declared_by}:
+                    findings.append({"level": "warning", "file": str(f), "line": i + 1, "code": "RS-NATIVE-VIA-MOD",
+                                     "message": f"{name} has no vanilla declaration; it compiles here only because "
+                                                f"{', '.join(declared_by)} {'declares' if len(declared_by) == 1 else 'declare'} it. "
+                                                f"Players without such a mod get a compile error: require one "
+                                                f"(script_dependencies) or avoid the call",
+                                     "declared_by": declared_by})
+    return findings
+
+
+def static_check(files: list[Path], idx: dict | None, installed_version_hint: str | None = None,
+                 deps: list[str] | None = None) -> list[dict]:
+    """Check hook targets exist in the installed game, and flag syntax older compilers reject."""
+    findings = native_only_calls(files, idx, deps)
     classes = idx["api"]["classes"] if idx else {}
     for f in files:
         lines = read_text(f).splitlines()

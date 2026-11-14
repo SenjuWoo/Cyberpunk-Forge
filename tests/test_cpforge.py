@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from cpforge import __version__  # noqa: E402
-from cpforge import archive, check, cli, conflicts, deploy, index, knowledge, logs, nexus, package, project, redscript, tweakdb, util  # noqa: E402,E501
+from cpforge import archive, check, cli, conflicts, deploy, index, knowledge, logs, nexus, package, project, redscript, tweakdb, tweaksrc, util  # noqa: E402,E501
 
 SCRIPT = """
 importonly abstract class IScriptable
@@ -230,6 +230,96 @@ class TweakDBTests(Base):
         self.assertIn("Items.X.price", recs["flats"])
 
 
+RED_TWEAK_OK = """package Items
+using RTDB, BaseStats
+
+// constructs seen in vanilla 2.5 sources and installed mods
+[ notQueryable ]
+MyJacket : GenericFaceClothing
+{
+	CName[] tags += [ "Quest", "Jacket", ];
+	fk< StatModifier >[] statModifiers =
+	[
+		{
+			statType = "BaseStats.Armor";
+			value = 10.0f;
+		} : Quality.Common,
+		"Quality.Common"
+	];
+	Vector3 offset = ( 0.0f, -9.f, 0.5f );
+	vehicleUIData = { productionYear = "2075"; info = "LocKey#45371"; };
+	entityTemplatePath = "base\\characters\\x.ent";
+}
+
+BaseLess
+{
+	string value = "Friendly";
+}
+
+Vehicle.dotted_name : Character
+{enumName = "x";}
+
+float topLevelFlat = 10.f;
+string[] topLevelList = [ "A", "B" ];
+"""
+
+
+class TweakSourceTests(Base):
+    def test_parses_real_constructs(self):
+        p = tweaksrc.parse(RED_TWEAK_OK)
+        self.assertIsNone(p["error"], p["error"])
+        self.assertEqual(p["package"], "Items")
+        self.assertEqual(p["using"], ["RTDB", "BaseStats"])
+        names = tweaksrc.full_names(p)
+        self.assertIn("Items.MyJacket", names)
+        self.assertIn("Items.BaseLess", names)
+        self.assertIn("Vehicle.dotted_name", names)
+        self.assertEqual(names["Items.MyJacket"]["base"], "GenericFaceClothing")
+        self.assertIn("topLevelFlat", p["flats"])
+
+    def test_syntax_errors_are_located(self):
+        cases = {
+            "R : Clothing\n{\n\ta = 1\n\tb = 2;\n}\n": ("TWEAK-SRC-SEMICOLON", 3),
+            "R : Clothing\n{\n\ta = [ \"x\" \"y\" ];\n}\n": ("TWEAK-SRC-COMMA", 3),
+            "R : Clothing\n{\n\ta = \"open;\n}\n": ("TWEAK-SRC-STRING", 3),
+            "R : Clothing\n{\n\ta = 1;\n": ("TWEAK-SRC-UNCLOSED", 3),
+            "R : Clothing\n{\n\t\"x\";\n}\n": ("TWEAK-SRC-STATEMENT", 3),
+            "R : Clothing\n{\n}\nR : Clothing\n{\n}\n": ("TWEAK-SRC-DUP", 4),
+        }
+        for text, (code, line) in cases.items():
+            err = tweaksrc.parse(text)["error"]
+            self.assertIsNotNone(err, text)
+            self.assertEqual((err["code"], err["line"]), (code, line), text)
+
+    def test_index_keeps_baseless_and_dotted_records(self):
+        (self.game / "tools/redmod/tweaks/base/extra.tweak").write_text(
+            "package Extra\n\nbaseState\n{\n\tfloat x = 1.f;\n}\n\nOther.full_name : Character\n{\n}\n", encoding="utf-8")
+        idx = index.build(self.game)
+        self.assertIn("Extra.baseState", idx["tweak_records"])
+        self.assertIn("Other.full_name", idx["tweak_records"])
+
+    def test_check_project_reports_tweak_source(self):
+        out = self.tmp / "proj"
+        project.new_project("Tweak Mod", ["tweakxl"], out, "T", "d")
+        index.build(self.game)
+        d = out / "game/r6/tweaks/TweakMod"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "good.tweak").write_text(RED_TWEAK_OK.replace("BaseStats.Armor", "Quality.Common"), encoding="utf-8")
+        (d / "bases.tweak").write_text("package Items\n\nA : NoSuchBase\n{\n\tquality = \"Items.Nope\";\n}\n"
+                                       "B : Clothing\n{\n}\nC : gamedataCharacter_Record\n{\n}\n", encoding="utf-8")
+        r = check.check_project(out)
+        self.assertEqual(r["errors"], [], r["errors"])
+        warns = [(w["code"], w["file"].rsplit("/", 1)[-1]) for w in r["warnings"] if w["code"].startswith("TWEAK-SRC")]
+        self.assertIn(("TWEAK-SRC-BASE", "bases.tweak"), warns)
+        self.assertIn(("TWEAK-SRC-REF", "bases.tweak"), warns)
+        self.assertEqual([w for w in warns if w[1] == "good.tweak"], [])
+        self.assertEqual(len([w for w in warns if w[0] == "TWEAK-SRC-BASE"]), 1)  # Clothing and gamedata types resolve
+        (d / "broken.tweak").write_text("X : Clothing\n{\n\ta = 1\n}\n", encoding="utf-8")
+        r = check.check_project(out)
+        self.assertEqual([(e["code"], e["line"]) for e in r["errors"]], [("TWEAK-SRC-SEMICOLON", 3)])
+        self.assertIn("tweak source syntax", r["checked"])
+
+
 class IndexTests(Base):
     def test_build_and_lookup(self):
         idx = index.build(self.game)
@@ -273,6 +363,28 @@ class StaticCheckTests(Base):
         self.assertIn("RS-CONTINUE", codes)
         self.assertEqual(codes.count("RS-NO-METHOD"), 1)
 
+    def test_native_only_calls(self):
+        idx = index.build(self.game)
+        f = self.tmp / "log.reds"
+        f.write_text('func A() {\n  LogChannel(n"DEBUG", "x"); // LogChannel(\n  let s = "LogChannel(";\n  GlobalHelper(1);\n}\n',
+                     encoding="utf-8")
+        found = [(x["code"], x["line"]) for x in redscript.static_check([f], idx)]
+        self.assertEqual(found, [("RS-NATIVE-ONLY", 2)])
+        # Declaring it yourself is the documented way to call a native.
+        own = self.tmp / "decl.reds"
+        own.write_text("native func LogChannel(channel: CName, text: script_ref<String>)\n", encoding="utf-8")
+        self.assertEqual(redscript.static_check([f, own], idx), [])
+        # Declared by an installed mod: compiles here, breaks for players without it.
+        mod = self.game / "r6/scripts/LogHeaders"
+        mod.mkdir(parents=True)
+        (mod / "log.reds").write_text("native func LogChannel(channel: CName, text: script_ref<String>)\n", encoding="utf-8")
+        index._CACHE.clear()
+        idx = index.build(self.game)
+        found = redscript.static_check([f], idx)
+        self.assertEqual([x["code"] for x in found], ["RS-NATIVE-VIA-MOD"])
+        self.assertIn("LogHeaders", found[0]["message"])
+        self.assertEqual(redscript.static_check([f], idx, deps=["logheaders"]), [])
+
     def test_parse_scc_output(self):
         text = ("[INFO - x] Compiling\n[ERROR - x] [UNRESOLVED_FN] At C:\\g\\r6\\scripts\\MyMod\\a.reds:11:3:\n"
                 "  LogChannel(n\"X\", s\"y\");\nfunction 'LogChannel' not found\n[WARN - x] At C:\\g\\r6\\scripts\\Other\\b.reds:1:1:\n"
@@ -283,6 +395,47 @@ class StaticCheckTests(Base):
         self.assertEqual(r["errors"][0]["mod"], "MyMod")
         self.assertEqual(r["errors"][0]["line"], 11)
         self.assertTrue(r["complete"])
+
+
+class ApiDiffTests(Base):
+    def store_as(self, name):
+        index.build(self.game)
+        index._CACHE.clear()
+        (self.home / "index" / "unknown").rename(self.home / "index" / name)
+
+    def test_diff_and_affected_hooks(self):
+        self.store_as("3.0.80.51928")
+        script = self.game / "tools/redmod/scripts/core/player.script"
+        text = script.read_text(encoding="utf-8")
+        text = text.replace("\tpublic const function GetHealth() : Float\n\t{\n\t\treturn m_health;\n\t}\n", "")
+        text = text.replace("protected event OnAction( action : ListenerAction, consumer : ListenerActionConsumer )",
+                            "protected event OnAction( action : ListenerAction )")
+        text = text.replace("\tB = 1,\n", "") + "\nclass NewThing extends IScriptable\n{\n}\n"
+        script.write_text(text, encoding="utf-8")
+        tw = self.game / "tools/redmod/tweaks/base/items.tweak"
+        tw.write_text(tw.read_text(encoding="utf-8").replace("Preset_Lexington_Default : WeaponItem", "Preset_New : WeaponItem"),
+                      encoding="utf-8")
+        self.store_as("3.0.88.46235")
+        code, v = run_cli("api", "versions")
+        self.assertEqual([x["version"] for x in v["stored"]], ["3.0.80.51928", "3.0.88.46235"])
+        d = index.diff(index.load_version("3.0.80.51928"), index.load_version("3.0.88.46235"))
+        self.assertIn({"class": "PlayerPuppet", "member": "GetHealth", "kind": "func"}, d["members_removed"])
+        self.assertEqual([c["member"] for c in d["signatures_changed"]], ["OnAction"])
+        self.assertIn("NewThing", d["classes_added"])
+        self.assertEqual(d["enum_values_removed"], [{"enum": "EFoo", "values": ["B"]}])
+        self.assertEqual(d["tweak_records_removed"], ["Items.Preset_Lexington_Default"])
+        self.assertEqual(d["tweak_records_added"], ["Items.Preset_New"])
+        out = self.tmp / "proj"
+        project.new_project("Hook Mod", ["redscript"], out, "T", "d")
+        reds = out / "game/r6/scripts/HookMod/Hooks.reds"
+        reds.write_text("@wrapMethod(PlayerPuppet)\npublic const func GetHealth() -> Float {\n  return wrappedMethod();\n}\n",
+                        encoding="utf-8")
+        code, r = run_cli("api", "diff", "3.0.80.51928", "3.0.88.46235", "--project", str(out))
+        self.assertEqual(code, 1)
+        self.assertEqual([(h["member"], h["why"]) for h in r["project_hooks_affected"]], [("GetHealth", "method removed")])
+        code, r = run_cli("api", "diff", "9.9", "3.0.88.46235")
+        self.assertEqual(code, 2)
+        self.assertIn("stored", r["error"])
 
 
 ALL_KINDS = ["redscript", "modsettings", "cet", "tweakxl", "input", "archivexl", "redmod", "audioware", "red4ext"]

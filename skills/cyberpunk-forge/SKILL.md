@@ -3,7 +3,7 @@ name: cyberpunk-forge
 description: Make, check, fix, package and publish Cyberpunk 2077 mods with Cyberpunk Forge (cpforge). Use for redscript, Cyber Engine Tweaks Lua, TweakXL, ArchiveXL, RED4ext C++ plugins, Input Loader, Mod Settings, Audioware, REDmod, WolvenKit archives, mod conflicts, broken mods after a game patch, redscript compile errors, CET errors, and Nexus releases.
 ---
 
-# Cyberpunk Forge (cpforge 0.1.0)
+# Cyberpunk Forge (cpforge 0.2.0)
 
 Use the forge as the evidence layer. Never write a class, method, record or
 resource path from memory when `cpforge` can read it from the installed game.
@@ -26,7 +26,9 @@ If `cpforge` is not on PATH, run `cpforge.cmd` from the forge folder or
    - `cpforge tweak search <words>`, `cpforge tweak show <Record>`
    - `cpforge archive find <resource path> --vanilla`
 6. `cpforge check --compile` - fix every error; read `gaps` and say which
-   checks did not run.
+   checks did not run. `RS-NATIVE-VIA-MOD` means a call compiles only because
+   another installed mod declares it: add that mod to `script_dependencies` or
+   use FTLog-style vanilla calls.
 7. Runtime: `cpforge deploy`, the user tests in game, `cpforge logs --mod <Id>`,
    `cpforge undeploy`. Only the user's game session is runtime evidence.
 8. Release: `cpforge bump <part>`, write CHANGELOG.md, `cpforge package`,
@@ -42,7 +44,9 @@ Audioware for sound, REDmod only when a REDmod package is required.
 
 `cpforge logs` (all logs, matched against known errors), `cpforge conflicts`,
 `cpforge explain "<error line>"`. After a game patch: update frameworks first,
-`cpforge index`, then `cpforge check --compile` on each mod you own.
+`cpforge index` (the old patch's index is kept), `cpforge api diff <old> <new>
+--project <mod>` to list hooks that hit removed API, then
+`cpforge check --compile` on each mod you own.
 
 ## Rules
 

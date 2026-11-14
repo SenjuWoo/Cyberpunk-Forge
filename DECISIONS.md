@@ -23,5 +23,15 @@
   fails to compile without a logging-headers mod.
 - **Deploy is explicit and reversible.** Receipt with hashes, backups of
   anything overwritten, undeploy removes only files still matching their hash.
+- **.tweak checks are structural, calibrated on the real corpus.** The parser
+  must read every vanilla `.tweak` file without a finding before a rule ships;
+  base and reference misses are warnings because resolution (package, `using`,
+  record types) is inferred, not documented.
+- **Native-only calls are judged by declaration origin.** A global is flagged
+  only when metadata.json lists it and no vanilla script declares it; redscript
+  intrinsics and mod-defined script functions are never flagged.
+- **Releases come from tags on green commits.** The Release workflow checks the
+  tag against `__version__` and CHANGELOG and requires a successful CI run on
+  that SHA before it publishes.
 - **Deterministic packages.** Sorted entries, fixed timestamps, forward
   slashes; the same input gives the same bytes.

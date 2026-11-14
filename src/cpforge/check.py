@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from . import index as idxmod
-from . import redscript
+from . import redscript, tweaksrc
 from .archive import read_archive
 from .game import find_game, find_tool
 from .package import ALLOWED_ROOTS, scan_secrets
@@ -112,6 +112,56 @@ def _tweak_check(files: list[Path], rep: Report, root: Path, game: Path | None, 
     rep.done("tweak references (" + ", ".join(tdb.sources) + ")")
 
 
+def _red_tweak_check(files: list[Path], rep: Report, root: Path, game: Path | None, idx: dict | None,
+                     yaml_files: list[Path]):
+    """RED .tweak files: structure always; bases and record references when the game is known."""
+    parsed = []
+    project_records: set[str] = set()
+    for f in files:
+        p = tweaksrc.parse_file(f)
+        if p["error"]:
+            e = p["error"]
+            rep.add("error", e["code"], e["message"], rel(f, root), e["line"])
+            continue
+        parsed.append((f, p))
+        project_records |= set(tweaksrc.full_names(p))
+    for y in yaml_files:
+        try:
+            project_records |= set(yaml_records(y)["records"])
+        except Exception:  # reported by the YAML check
+            pass
+    rep.done("tweak source syntax")
+    if not game:
+        rep.gap("tweak source bases", "game not found, cannot check base records")
+        return
+    tdb = TweakDB(game)
+    known = set(idx["tweak_records"]) if idx else set()
+    types = set(idx["record_types"].values()) if idx else set()
+    installed = set(installed_yaml_records(game))
+    for f in iter_files(game / "r6/tweaks", (".tweak",)):
+        installed |= set(tweaksrc.full_names(tweaksrc.parse_file(f)))
+    packages = {n.split(".")[0] for n in known | installed}
+
+    def exists(name: str) -> bool:
+        return name in project_records or name in known or name in installed or tdb.exists(name)
+
+    for f, p in parsed:
+        fr = rel(f, root)
+        for name, r in p["records"].items():
+            b = r["base"]
+            if not b:
+                continue
+            if re.sub(r"^gamedata|_Record$", "", b) in types:
+                continue
+            if not any(exists(c) for c in tweaksrc.base_candidates(p, b)):
+                rep.add("warning", "TWEAK-SRC-BASE", f"{name}: base '{b}' is not a record type, a TweakDB record or an "
+                        f"installed tweak (looked in: {', '.join(tweaksrc.base_candidates(p, b))})", fr, r["line"])
+        for s, line in p["strings"]:
+            if tweaksrc.looks_like_record(s) and s.split(".")[0] in packages and not exists(s):
+                rep.add("warning", "TWEAK-SRC-REF", f"'{s}' looks like a record name but does not exist", fr, line)
+    rep.done("tweak source bases and references")
+
+
 def _xl_check(files: list[Path], rep: Report, root: Path):
     for f in files:
         try:
@@ -195,7 +245,8 @@ def check_project(root: Path, game_arg: str | None = None, compile_scripts: bool
 
     reds = [f for f in files if f.suffix == ".reds"]
     if reds:
-        for fnd in redscript.static_check(reds, idx):
+        deps = [str(d) for d in (m.get("script_dependencies") or [])] + [str(r.get("id", "")) for r in m.get("requires", [])]
+        for fnd in redscript.static_check(reds, idx, deps=deps):
             fnd["file"] = rel(Path(fnd["file"]), root)
             (rep.errors if fnd.pop("level") == "error" else rep.warnings).append(fnd)
         rep.done("redscript static" + (" + hook targets" if idx else ""))
@@ -223,8 +274,9 @@ def check_project(root: Path, game_arg: str | None = None, compile_scripts: bool
     yamls = [f for f in files if f.suffix in (".yaml", ".yml") and "r6/tweaks" in f.as_posix()]
     if yamls:
         _tweak_check(yamls, rep, root, game, idx)
-    if any(f.suffix == ".tweak" for f in files):
-        rep.gap("RED .tweak files", "syntax not checked by the forge yet; TweakXL reports errors in its log")
+    red_tweaks = [f for f in files if f.suffix == ".tweak"]
+    if red_tweaks:
+        _red_tweak_check(red_tweaks, rep, root, game, idx, yamls)
     _xl_check([f for f in files if f.name.endswith(".archive.xl")], rep, root)
     _xml_check([f for f in files if f.suffix == ".xml" and "r6/input" in f.as_posix()], rep, root)
     for info in [f for f in files if f.name == "info.json" and "/mods/" in "/" + f.relative_to(game_dir).as_posix()]:

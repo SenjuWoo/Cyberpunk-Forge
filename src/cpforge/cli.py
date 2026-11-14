@@ -76,6 +76,19 @@ def cmd_index(args):
 
 def cmd_api(args):
     from . import index as I
+    if args.action == "versions":
+        return {"stored": I.stored_versions(), "stored_in": str(home_dir() / "index")}, 0
+    if args.action == "diff":
+        if len(args.query) != 2:
+            raise ForgeError("api diff needs two versions", "cpforge api diff <old> <new>  (see cpforge api versions)")
+        d = I.diff(I.load_version(args.query[0]), I.load_version(args.query[1]), args.limit)
+        if args.project or (Path.cwd() / "cpforge.json").is_file():
+            from .util import iter_files
+            root = _project(args)
+            d["project_hooks_affected"] = I.affected_hooks(d, list(iter_files(root / "game", (".reds",))))
+        return d, (1 if d.get("project_hooks_affected") else 0)
+    if not args.query:
+        raise ForgeError(f"api {args.action} needs a name or text", f"cpforge api {args.action} <query>")
     args.query = " ".join(args.query)
     idx = I.load(_game(args))
     if args.action == "class":
@@ -289,8 +302,10 @@ def parser() -> argparse.ArgumentParser:
     s = add("index", cmd_index, "build the local API and TweakDB index from the installed game")
     s.add_argument("--vanilla-only", action="store_true", help="skip installed mods' .reds")
     s = add("api", cmd_api, "look up classes, functions, fields and enums from the installed game")
-    s.add_argument("action", choices=["search", "class", "enum"], help="search <text> | class <Name> | enum <Name>")
-    s.add_argument("query", nargs="+", help="text or exact name")
+    s.add_argument("action", choices=["search", "class", "enum", "versions", "diff"],
+                   help="search <text> | class <Name> | enum <Name> | versions | diff <old> <new>")
+    s.add_argument("query", nargs="*", help="text, exact name, or two versions for diff (exe version or patch, e.g. 2.31 2.5)")
+    s.add_argument("--project", help="diff: also list this project's hooks that hit removed API")
     s.add_argument("--kind", default="any", choices=["any", "class", "func", "field", "enum"], help="search filter")
     s.add_argument("--members", default="all", choices=["all", "funcs", "fields"], help="class members to list")
     s.add_argument("--filter", help="only members whose name contains this")
