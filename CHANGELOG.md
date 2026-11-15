@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1 - 2026-11-15
+
+- `knowledge vehicles`: doors are confirmed animating in game on a car's own
+  animset copy, and the wheel fix is confirmed by the in-game slot probe
+  (wheel slots match the rig). Hood, trunk and window animation on an own
+  animset is marked not verified.
+
 ## 0.5.0 - 2026-11-15
 
 - `cpforge res check` on an `.ent` checks the animset/rig pairing: every

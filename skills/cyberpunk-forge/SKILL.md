@@ -3,7 +3,7 @@ name: cyberpunk-forge
 description: Make, check, fix, package and publish Cyberpunk 2077 mods with Cyberpunk Forge (cpforge). Use for redscript, Cyber Engine Tweaks Lua, TweakXL, ArchiveXL, RED4ext C++ plugins, Input Loader, Mod Settings, Audioware, REDmod, WolvenKit archives, mod conflicts, broken mods after a game patch, redscript compile errors, CET errors, and Nexus releases.
 ---
 
-# Cyberpunk Forge (cpforge 0.5.0)
+# Cyberpunk Forge (cpforge 0.5.1)
 
 Use the forge as the evidence layer. Never write a class, method, record or
 resource path from memory when `cpforge` can read it from the installed game.

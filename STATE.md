@@ -1,12 +1,18 @@
 # STATE
 
-Version: **0.5.0** (2026-11-15)
+Version: **0.5.1** (2026-11-15)
 
 ## Goal
 
 A local, agent-friendly toolkit for every kind of Cyberpunk 2077 mod:
 redscript, CET, TweakXL, ArchiveXL, RED4ext, Input Loader, Mod Settings,
 Audioware, REDmod. Facts come from the installed game.
+
+## Done (0.5.1)
+
+- vehicles.md: doors verified on the Sonata's own animset (owner, 0.9.2);
+  wheel fix verified by the CET probe; hood/trunk/windows not verified (owner's
+  keybind for them did not work, not a mod issue).
 
 ## Done (0.5.0)
 
@@ -77,7 +83,7 @@ Audioware, REDmod. Facts come from the installed game.
 | Install twice / uninstall | CI | `install` job on windows-latest |
 | res check / inspect | tool-validated | 79 real resources (car build + vanilla Hella) clean; synthetic rule tests offline |
 | res roundtrip | tool-validated | WolvenKit 9.1 on the dev machine; not in CI (no WolvenKit there) |
-| Vehicle knowledge | in-game (partial) | Sonata tests 1-2: summon, paints, lights, plate, doors, crash deformation, wheel placement after the animset fix |
+| Vehicle knowledge | in-game (partial) | Sonata tests 1-2: summon, paints, lights, plate, doors (also on the own animset), crash deformation, wheel placement after the animset fix (probe matches the rig); hood/trunk/windows on the own animset not verified |
 
 ## Next
 

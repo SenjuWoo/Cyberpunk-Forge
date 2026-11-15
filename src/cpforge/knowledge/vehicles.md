@@ -11,8 +11,10 @@ Every rule was checked with tool output (WolvenKit round trips, mesh and bbox
 comparisons, `cpforge` checks). In game the car summons, shows its paints,
 headlights, light bar, plate and taillights, opens its doors on the new hinges,
 deforms in crashes, and sits with its wheels centred in the arches after the
-animset fix in section 4. Confirm against your own base car before relying on a
-number.
+animset fix in section 4 (CET probe: wheels at x 0.799/0.798, y 1.423/1.422,
+matching the rig). Doors animate on the car's own animset; hood, trunk and
+window animation on it is not verified yet. Confirm against your own base car
+before relying on a number.
 
 ## 1. Pipeline
 
