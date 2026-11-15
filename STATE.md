@@ -1,12 +1,33 @@
 # STATE
 
-Version: **0.5.1** (2026-11-15)
+Version: **0.6.0** (2026-11-15)
 
 ## Goal
 
 A local, agent-friendly toolkit for every kind of Cyberpunk 2077 mod:
 redscript, CET, TweakXL, ArchiveXL, RED4ext, Input Loader, Mod Settings,
 Audioware, REDmod. Facts come from the installed game.
+
+## Done (0.6.0) - full audit
+
+- Baseline before the audit: 53/53 tests, doctor ok on 2.5, CI green, 0 alerts.
+- 21 defects found and fixed, each with a regression test first (74 tests now):
+  deploy wrote through Vortex hard links into staging (live install: every
+  sampled r6/scripts file has nlink > 1); redeploy overwrote game-folder edits;
+  failed deploy left no receipt; undeploy dropped the receipt when the game
+  folder was unreachable; compile flattened folders and skipped loose .reds;
+  timeout ran `taskkill /IM scc.exe` machine-wide; `--keep` cleared foreign
+  folders; 10 exit-3 crashes on ordinary bad input; inventory/log globbing
+  (files counted as mods, `[` in path); template escaping; `new --force`
+  identity; silent version mirrors; secret scan skipped under a `build` parent
+  and double-reported Anthropic keys; stale tool env var; `conflicts` without
+  index; `validate` memory; setuptools license deprecation.
+- Real 2.5 install: doctor ok (redscript mods 347 + 1 loose, was 349);
+  `check --compile` on redscript+modsettings+input+tweakxl+cet: 0 errors;
+  two same-named .reds in two folders both staged and compiled by scc; an
+  injected UNRESOLVED_FN maps to the exact project file and line.
+- Not changed (suspicion only): `logs --mod` falls back to all sources when no
+  error line names the mod (intentional per code); RS-INHERITED skips natives.
 
 ## Done (0.5.1)
 
@@ -81,6 +102,8 @@ Audioware, REDmod. Facts come from the installed game.
 | Native-only call check | tool-validated | 0 findings over installed mods; LogChannel in a scratch project flagged on 2.5 |
 | api diff | tool-validated (synthetic) | offline test with two stored indexes; on the dev machine only the 2.5 index exists, so no real patch-to-patch diff yet |
 | Install twice / uninstall | CI | `install` job on windows-latest |
+| Deploy hard-link safety | tool-validated (synthetic) | offline test with an `os.link` pair; not run against the live Vortex folder (game folder is read-only for the forge's own tests) |
+| Compile staging (0.6.0) | tool-validated | real scc.exe on 2.5: nested + same-named files compile, diagnostics map back |
 | res check / inspect | tool-validated | 79 real resources (car build + vanilla Hella) clean; synthetic rule tests offline |
 | res roundtrip | tool-validated | WolvenKit 9.1 on the dev machine; not in CI (no WolvenKit there) |
 | Vehicle knowledge | in-game (partial) | Sonata tests 1-2: summon, paints, lights, plate, doors (also on the own animset), crash deformation, wheel placement after the animset fix (probe matches the rig); hood/trunk/windows on the own animset not verified |

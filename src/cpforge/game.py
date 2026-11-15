@@ -1,7 +1,6 @@
 """Find the installed game and read what is installed. Read-only."""
 from __future__ import annotations
 
-import glob
 import json
 import os
 import re
@@ -78,7 +77,7 @@ def _gog_paths() -> list[Path]:
 def _epic_paths() -> list[Path]:
     out: list[Path] = []
     base = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "Epic/EpicGamesLauncher/Data/Manifests"
-    for item in glob.glob(str(base / "*.item")):
+    for item in (sorted(base.glob("*.item")) if base.is_dir() else []):
         try:
             data = json.loads(Path(item).read_text(encoding="utf-8", errors="replace"))
         except (OSError, ValueError):
@@ -166,9 +165,14 @@ def find_tool(tool_id: str) -> str | None:
     for t in reg["tools"]:
         if t["id"] != tool_id:
             continue
+        # An explicit variable wins when it points at something real; a stale one falls through to PATH.
         if t.get("env") and os.environ.get(t["env"]):
             p = os.environ[t["env"]]
-            return p if Path(p).exists() or shutil.which(p) else None
+            if Path(p).is_file():
+                return p
+            hit = shutil.which(p)
+            if hit:
+                return hit
         for name in t["names"]:
             hit = shutil.which(name)
             if hit:
@@ -187,7 +191,15 @@ def tools() -> list[dict]:
 
 
 def _count(path: Path, pattern: str) -> int:
-    return len(glob.glob(str(path / pattern))) if path.is_dir() else 0
+    """Entries of one folder matching pattern; a trailing '/' counts folders only.
+
+    Path.glob, not glob.glob(str(...)): '[' in the game path is a glob class to glob.glob,
+    and str(path / "*/") drops the slash, so files were counted as folders.
+    """
+    if not path.is_dir():
+        return 0
+    dirs_only = pattern.endswith("/")
+    return sum(1 for p in path.glob(pattern.rstrip("/")) if (p.is_dir() if dirs_only else p.is_file()))
 
 
 def inventory(root: Path) -> dict:

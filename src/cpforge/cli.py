@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 import traceback
@@ -165,9 +166,11 @@ def cmd_res(args):
     if args.action != "roundtrip" and not args.no_game:
         from .game import find_game
         try:
-            game_map = R.game_hashes(find_game(args.game)[0])
+            game_root = find_game(args.game)[0]
         except ForgeError:
-            game_map = None  # reported per file as references.unresolved = null
+            game_root = None
+        # No game: reported per file as references.unresolved = null.
+        game_map = R.game_hashes(game_root) if game_root else None
     trees: dict[str, dict] = {}
     for f in args.files:
         p = Path(f)
@@ -233,7 +236,10 @@ def cmd_conflicts(args):
     what = args.what
     out = {}
     if what in ("all", "scripts"):
-        out["scripts"] = C.script_conflicts(I.load(root))
+        # Asked for alone, a missing index is the failure; with the rest, it is one skipped section.
+        idx = I.load(root, required=what == "scripts")
+        out["scripts"] = C.script_conflicts(idx) if idx else {"skipped": "no API index for this game version",
+                                                              "fix": "run: cpforge index"}
     if what in ("all", "archives"):
         out["archives"] = C.archive_conflicts(root, args.limit)
     if what in ("all", "tweaks"):
@@ -249,8 +255,10 @@ def cmd_logs(args):
 
 
 def cmd_new(args):
-    from .project import new_project
-    out = Path(args.out) if args.out else Path.cwd() / args.name.replace(" ", "")
+    from .project import make_id, new_project
+    # Default folder: the name without spaces, minus what a folder name cannot hold on Windows.
+    folder = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", args.name.replace(" ", "")).rstrip(". ") or make_id(args.name)
+    out = Path(args.out) if args.out else Path.cwd() / folder
     return new_project(args.name, args.kind or ["redscript"], out, args.author or "", args.description or "", args.force), 0
 
 
@@ -268,11 +276,13 @@ def cmd_check(args):
 
 def cmd_compile(args):
     from .project import load_manifest
-    from .redscript import compile_scripts
+    from .redscript import compile_scripts, project_script_dirs
     root = _project(args)
     m = load_manifest(root)
     game = _game(args)
-    dirs = [p for p in (root / "game/r6/scripts").glob("*") if p.is_dir()] or [root / "game/r6/scripts"]
+    dirs = project_script_dirs(root)
+    if not dirs:
+        raise ForgeError("this project has no game/r6/scripts folder", "put .reds files under game/r6/scripts/<Mod>/")
     deps = args.deps.split(",") if args.deps not in ("auto", "all", "none") else args.deps
     if deps == "auto":
         deps = m.get("script_dependencies") or []

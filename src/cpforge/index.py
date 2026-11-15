@@ -14,6 +14,7 @@ import gzip
 import json
 import re
 import time
+import zlib
 from pathlib import Path
 
 from . import __version__, tweaksrc
@@ -235,8 +236,15 @@ def load(game_root: Path, required: bool = True) -> dict | None:
         if required:
             raise ForgeError("no API index for this game version", "run: cpforge index")
         return None
-    with gzip.open(p, "rt", encoding="utf-8") as f:
-        idx = json.load(f)
+    try:
+        with gzip.open(p, "rt", encoding="utf-8") as f:
+            idx = json.load(f)
+        if not isinstance(idx, dict):
+            raise ValueError("not an index")
+    except (OSError, EOFError, ValueError, zlib.error) as e:  # truncated or damaged file: rebuilding replaces it
+        if required:
+            raise ForgeError(f"API index is unreadable ({e.__class__.__name__}): {p}", "run: cpforge index") from e
+        return None
     if idx.get("schema") != INDEX_SCHEMA:
         if required:
             raise ForgeError("API index was built by an older forge", "run: cpforge index")
@@ -315,7 +323,9 @@ def stored_versions() -> list[dict]:
         try:
             with gzip.open(p, "rt", encoding="utf-8") as f:
                 head = json.load(f)
-        except (OSError, ValueError):
+        except (OSError, EOFError, ValueError, zlib.error):
+            continue
+        if not isinstance(head, dict):
             continue
         gv = head.get("game_version") or {}
         out.append({"version": p.parent.name, "patch": gv.get("patch"), "schema": head.get("schema"),

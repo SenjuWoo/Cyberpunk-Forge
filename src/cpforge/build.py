@@ -19,7 +19,14 @@ def _run(cmd: list[str], cwd: Path, timeout: int) -> dict:
     # Let FetchContent's git write the SDK's long generated header paths on Windows.
     n = int(env.get("GIT_CONFIG_COUNT", "0") or 0)
     env.update({"GIT_CONFIG_COUNT": str(n + 1), f"GIT_CONFIG_KEY_{n}": "core.longpaths", f"GIT_CONFIG_VALUE_{n}": "true"})
-    p = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, errors="replace", timeout=timeout, env=env)
+    try:
+        p = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, errors="replace", timeout=timeout, env=env)
+    except subprocess.TimeoutExpired as e:
+        out = e.stdout if isinstance(e.stdout, str) else (e.stdout or b"").decode("utf-8", "replace")
+        return {"cmd": cmd, "exit_code": None, "timed_out": True, "seconds": round(time.time() - t, 1),
+                "tail": "\n".join(out.strip().splitlines()[-25:]) + f"\n(stopped after {timeout} s)"}
+    except OSError as e:
+        raise ForgeError(f"cannot run {cmd[0]}: {e}", "check the tool path (cpforge doctor lists it)") from e
     out = (p.stdout or "") + (p.stderr or "")
     return {"cmd": cmd, "exit_code": p.returncode, "seconds": round(time.time() - t, 1),
             "tail": "\n".join(out.strip().splitlines()[-25:])}

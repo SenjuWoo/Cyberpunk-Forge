@@ -64,6 +64,58 @@ def scc_path(game_root: Path) -> Path:
     return p
 
 
+SCRATCH_MARKER = ".cpforge-scratch"
+
+
+def project_script_dirs(root: Path) -> list[Path]:
+    """What a project compiles: all of game/r6/scripts, folders and loose files alike."""
+    scripts = root / "game" / "r6" / "scripts"
+    return [scripts] if scripts.is_dir() else []
+
+
+def stage_sources(script_dirs: list[Path], dest: Path) -> dict[Path, Path]:
+    """Copy every .reds under the given folders into dest; return {staged file: source file}.
+
+    One folder keeps its layout. Several folders each get their own subfolder, so
+    two files with the same name never land on one path.
+    """
+    staged: dict[Path, Path] = {}
+    many = len(script_dirs) > 1
+    used: set[str] = set()
+    for d in script_dirs:
+        sub = d.name
+        n = 2
+        while many and sub.lower() in used:
+            sub = f"{d.name}_{n}"
+            n += 1
+        used.add(sub.lower())
+        base = dest / sub if many else dest
+        for f in iter_files(d, (".reds",)):
+            target = base / f.relative_to(d)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, target)
+            staged[target] = f
+    return staged
+
+
+def scratch_dir(keep: Path | None) -> Path:
+    """The folder scc works in. A kept folder is reused only if the forge made it."""
+    if not keep:
+        work = Path(tempfile.mkdtemp(prefix="cpforge-scc-"))
+    else:
+        work = Path(keep)
+        scripts = work / "scripts"
+        if scripts.exists() and not (work / SCRATCH_MARKER).is_file():
+            raise ForgeError(f"{work} already has a scripts folder the forge did not create; it will not be cleared",
+                             "give --keep an empty or new folder")
+        work.mkdir(parents=True, exist_ok=True)
+        if scripts.exists():
+            shutil.rmtree(scripts)
+    (work / SCRATCH_MARKER).write_text("scratch compile folder written by cpforge; safe to delete\n", encoding="utf-8")
+    (work / "scripts").mkdir(parents=True, exist_ok=True)
+    return work
+
+
 def compile_scripts(game_root: Path, script_dirs: list[Path], mod_name: str, deps: list[str] | str = "auto",
                     timeout: int = 180, keep: Path | None = None) -> dict:
     """Compile the given script folders with selected dependencies in a scratch copy.
@@ -76,18 +128,17 @@ def compile_scripts(game_root: Path, script_dirs: list[Path], mod_name: str, dep
     base = game_root / "r6/cache/final.redscripts"
     if not base.is_file():
         raise ForgeError("r6/cache/final.redscripts missing", "verify the game files in your launcher")
-    work = Path(keep) if keep else Path(tempfile.mkdtemp(prefix="cpforge-scc-"))
+    work = scratch_dir(keep)
     try:
         scripts = work / "scripts"
-        if scripts.exists():
-            shutil.rmtree(scripts)
-        scripts.mkdir(parents=True)
         (work / "cache").mkdir(exist_ok=True)
         if not (work / "cache/final.redscripts").is_file():
             shutil.copy2(base, work / "cache/final.redscripts")
         installed = game_root / "r6/scripts"
         if deps == "all":
-            dep_names = [p.name for p in installed.iterdir()] if installed.is_dir() else []
+            # Everything redscript would load: mod folders and loose .reds (not readmes or manager markers).
+            dep_names = [p.name for p in sorted(installed.iterdir()) if p.is_dir() or p.suffix == ".reds"] \
+                if installed.is_dir() else []
         elif deps in ("auto", "none", None):
             dep_names = []
         else:
@@ -105,11 +156,7 @@ def compile_scripts(game_root: Path, script_dirs: list[Path], mod_name: str, dep
                 missing.append(name)
         dest = scripts / mod_name
         dest.mkdir(parents=True, exist_ok=True)
-        for d in script_dirs:
-            for f in iter_files(d, (".reds",)):
-                target = dest / f.relative_to(d)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(f, target)
+        staged = {str(t).lower().replace("/", "\\"): s for t, s in stage_sources(script_dirs, dest).items()}
         # Plugins ship their own .reds (Codeware, Mod Settings, ...): hand them to scc as extra paths.
         paths = []
         if deps != "none":
@@ -129,22 +176,20 @@ def compile_scripts(game_root: Path, script_dirs: list[Path], mod_name: str, dep
             code = proc.returncode
             timed_out = False
         except subprocess.TimeoutExpired as e:
-            text = (e.stdout or "") if isinstance(e.stdout, str) else ""
+            # subprocess.run has already stopped this scc; any other scc.exe on the machine
+            # (the game compiling at startup, another project) is not ours to stop.
+            partial = e.stdout or ""
+            text = partial if isinstance(partial, str) else partial.decode("utf-8", "replace")
             code = None
             timed_out = True
-            subprocess.run(["taskkill", "/F", "/IM", "scc.exe"], capture_output=True)
+        except OSError as e:
+            raise ForgeError(f"cannot run {scc}: {e}", "reinstall redscript into the game") from e
         result = parse_scc_output(text, focus=mod_name)
         # Point diagnostics at the project's own files, not the scratch copy.
-        prefix = str(dest).lower().replace("/", "\\")
         for d in result["errors"] + result["warnings"]:
-            f = d.get("file", "")
-            if f.lower().replace("/", "\\").startswith(prefix):
-                tail = f[len(prefix):].lstrip("\\/")
-                for sd in script_dirs:
-                    cand = sd / tail
-                    if cand.is_file():
-                        d["file"] = str(cand)
-                        break
+            source = staged.get(d.get("file", "").lower().replace("/", "\\"))
+            if source:
+                d["file"] = str(source)
             d["message"] = d["message"].replace(str(work), "<scratch>")
         summary = [d for d in result["errors"] if "compilation has failed" in d["message"].lower()]
         if summary and len(summary) < len(result["errors"]):

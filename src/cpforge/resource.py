@@ -31,7 +31,13 @@ def wolvenkit() -> str:
 
 def _wk(args: list[str], timeout: int = 600) -> dict:
     cmd = [wolvenkit(), *args, "-v", "Minimal"]
-    p = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout)
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        raise ForgeError(f"WolvenKit CLI did not finish within {timeout} s ({args[0]} {args[1] if len(args) > 1 else ''})",
+                         "run the same WolvenKit command by hand to see where it stops") from e
+    except OSError as e:
+        raise ForgeError(f"cannot run the WolvenKit CLI {cmd[0]}: {e}", "fix WOLVENKIT_CLI or the PATH (cpforge doctor)") from e
     out = (p.stdout or "") + (p.stderr or "")
     # WolvenKit can exit non-zero after a partial success (import with no mesh buffers), and zero after a
     # logged failure: read the log lines, not only the exit code.

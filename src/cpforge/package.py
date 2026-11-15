@@ -22,8 +22,8 @@ DEV_FILES = ("STATE.md", "PLAN.md", "DECISIONS.md", "VALIDATION.md", "WORKSPACE_
              "cpforge.json", "CURRENT.txt")
 SECRET_PATTERNS = [
     ("openrouter-key", re.compile(r"sk-or-v1-[A-Fa-f0-9]{32,}")),
-    ("openai-style-key", re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_\-]{32,}")),
     ("anthropic-key", re.compile(r"sk-ant-[A-Za-z0-9_\-]{20,}")),
+    ("openai-style-key", re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_\-]{32,}")),
     ("github-token", re.compile(r"\b(?:ghp|gho|ghs|ghu)_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}")),
     ("aws-key-id", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
     ("google-api-key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b")),
@@ -42,9 +42,13 @@ def scan_secrets(name: str, data: bytes) -> list[dict]:
     if PurePosixPath(name).suffix.lower() not in TEXT_EXT or len(data) > 4 << 20:
         return []
     text = data.decode("utf-8", "replace")
-    found = []
+    found, taken = [], set()
+    # Specific patterns come first; a generic one (sk-...) matching the same key is not a second finding.
     for label, rx in SECRET_PATTERNS:
         for m in rx.finditer(text):
+            if m.start() in taken:
+                continue
+            taken.add(m.start())
             line = text.count("\n", 0, m.start()) + 1
             found.append({"file": name, "line": line, "kind": label, "match": m.group(0)[:6] + "..."})
     return found
@@ -140,6 +144,9 @@ def validate(zpath: Path) -> dict:
                 archives.add(norm)
             if norm.endswith(".archive.xl"):
                 xls.add(norm)
+            # Only text members can hold a key; reading a multi-GB .archive into memory to skip it is waste.
+            if PurePosixPath(norm).suffix.lower() not in TEXT_EXT or info.file_size > 4 << 20:
+                continue
             for s in scan_secrets(norm, z.read(info)):
                 add("error", "PKG-SECRET", f"looks like a {s['kind']} ({s['match']}); never ship credentials",
                     file=s["file"], line=s["line"])

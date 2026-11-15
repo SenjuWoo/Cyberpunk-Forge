@@ -30,7 +30,7 @@ your patch.
 | Build a RED4ext plugin (CMake) or pack an archive (WolvenKit CLI) | `cpforge build` |
 | Release zip (deterministic, validated, with receipt) | `cpforge package` |
 | Check any mod zip for layout mistakes and leaked API keys | `cpforge validate mod.zip` |
-| Install into the game for testing, and take it back out | `cpforge deploy`, `cpforge undeploy` |
+| Install into the game for testing, and take it back out (never writes through a mod manager's hard links) | `cpforge deploy`, `cpforge undeploy` |
 | Read all mod logs at once (redscript, RED4ext, CET, ArchiveXL, TweakXL, Codeware, crashes) | `cpforge logs` |
 | Find mods fighting over methods, resources or records | `cpforge conflicts` |
 | Bump the version everywhere, keep the last good zip | `cpforge bump minor` |
@@ -73,8 +73,9 @@ START-HERE.bat
 
 or `powershell -ExecutionPolicy Bypass -File Install.ps1`. It creates a `.venv`
 in this folder, runs the tests, adds a `cpforge` launcher to your user PATH,
-and copies the agent skill into the agent folders it finds. Nothing is
-overwritten. `Uninstall.ps1` reverses it.
+and copies the agent skill into the agent folders it finds (an existing copy
+is backed up under `%LOCALAPPDATA%\CyberpunkForge\skill-backup` first).
+`Uninstall.ps1` reverses it.
 
 Without installing: `cpforge.cmd <command>` from this folder.
 

@@ -13,7 +13,7 @@ from . import redscript, tweaksrc
 from .archive import read_archive
 from .game import find_game, find_tool
 from .package import ALLOWED_ROOTS, scan_secrets
-from .project import SEMVER, load_manifest
+from .project import SEMVER, load_manifest, read_version_mirror
 from .tweakdb import TweakDB, installed_yaml_records, parse_yaml, references, yaml_records
 from .util import KNOWLEDGE_DIR, ForgeError, iter_files, load_json, rel, resource_hash
 
@@ -54,12 +54,16 @@ def _lua_check(files: list[Path], rep: Report, root: Path):
         return
     for f in files:
         name = Path(tool).name.lower()
-        if "luajit" in name:
-            with tempfile.TemporaryDirectory() as td:
-                cmd = [tool, "-b", str(f), str(Path(td) / "out.bc")]
-                p = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
-        else:
-            p = subprocess.run([tool, "-p", str(f)], capture_output=True, text=True, errors="replace")
+        try:
+            if "luajit" in name:
+                with tempfile.TemporaryDirectory() as td:
+                    cmd = [tool, "-b", str(f), str(Path(td) / "out.bc")]
+                    p = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=60)
+            else:
+                p = subprocess.run([tool, "-p", str(f)], capture_output=True, text=True, errors="replace", timeout=60)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            rep.gap("lua syntax", f"{tool} could not be run ({e.__class__.__name__}: {e})")
+            return
         if p.returncode != 0:
             rep.add("error", "LUA-SYNTAX", (p.stderr or p.stdout).strip()[:300], rel(f, root))
     rep.done("lua syntax")
@@ -243,16 +247,29 @@ def _xl_check(files: list[Path], rep: Report, root: Path):
         except Exception as e:
             rep.add("error", "XL-YAML", f"does not parse: {str(e)[:300]}", rel(f, root))
             continue
+        if not isinstance(doc, dict):
+            rep.add("error", "XL-YAML", "top level must be a mapping (factories:, localization:, ...)", rel(f, root))
+            continue
         arc_path = f.with_name(f.name[: -len(".xl")])
-        paths = []
-        for p in doc.get("factories", []) or []:
-            paths.append(str(p))
-        for lang, p in ((doc.get("localization") or {}).get("onscreens") or {}).items():
-            paths.append(str(p))
+        factories = doc.get("factories") or []
+        loc = doc.get("localization") or {}
+        onscreens = (loc.get("onscreens") if isinstance(loc, dict) else None) or {}
+        if not isinstance(factories, list) or not isinstance(onscreens, dict):
+            rep.add("error", "XL-YAML", "factories must be a list of paths and localization.onscreens a mapping of "
+                    "language to path", rel(f, root))
+            continue
+        # A language may list one file or several.
+        paths = [str(p) for p in factories]
+        for p in onscreens.values():
+            paths += [str(x) for x in p] if isinstance(p, list) else [str(p)]
         if not arc_path.is_file():
             rep.gap(f"archive contents for {rel(f, root)}", "the .archive is not built yet (pack it with WolvenKit)")
             continue
-        arc = read_archive(arc_path)
+        try:
+            arc = read_archive(arc_path)
+        except ForgeError as e:
+            rep.add("error", "XL-ARCHIVE", str(e), rel(arc_path, root))
+            continue
         for p in paths:
             if not arc.contains(p):
                 rep.add("error", "XL-MISSING", f"'{p}' is not inside {arc_path.name}", rel(f, root))
@@ -296,16 +313,19 @@ def check_project(root: Path, game_arg: str | None = None, compile_scripts: bool
         for s in scan_secrets(r, f.read_bytes() if f.stat().st_size < (4 << 20) else b""):
             rep.add("error", "SECRET", f"looks like a {s['kind']} ({s['match']})", "game/" + r, s["line"])
     for f in iter_files(root / "source"):
-        if f.stat().st_size < (4 << 20) and "build" not in f.parts:
+        # Build output is skipped: a `build` folder inside source/, not one the project happens to live under.
+        if f.stat().st_size < (4 << 20) and "build" not in f.relative_to(root).parts:
             for s in scan_secrets(f.name, f.read_bytes()):
                 rep.add("warning", "SECRET-SOURCE", f"looks like a {s['kind']} in source/", rel(f, root), s["line"])
     rep.done("layout and secrets")
     for vf in m.get("version_files", []):
-        p = root / vf["path"]
-        if p.is_file():
-            hit = re.search(vf["pattern"], p.read_text(encoding="utf-8", errors="replace"))
-            if hit and "v" in hit.groupdict() and hit.group("v") != m["version"]:
-                rep.add("error", "VERSION-MISMATCH", f"{vf['path']} says {hit.group('v')}, cpforge.json says {m['version']}")
+        found, why = read_version_mirror(root, vf)
+        if found is None:
+            rep.add("error" if why.startswith("pattern is not") else "warning",
+                    "VERSION-FILE-MISSING" if why == "file not found" else "VERSION-PATTERN",
+                    f"version mirror {vf.get('path')}: {why}; cpforge bump cannot keep it in step", "cpforge.json")
+        elif found != m["version"]:
+            rep.add("error", "VERSION-MISMATCH", f"{vf['path']} says {found}, cpforge.json says {m['version']}")
     rep.done("version mirrors")
 
     game = None
@@ -328,9 +348,8 @@ def check_project(root: Path, game_arg: str | None = None, compile_scripts: bool
             if not game or os.name != "nt":
                 rep.gap("redscript compile", "needs Windows and the installed game")
             else:
-                dirs = sorted({f.parent for f in reds if "r6/scripts" in f.as_posix()})
-                top = [d for d in dirs if not any(o != d and o in d.parents for o in dirs)]
-                res = redscript.compile_scripts(game, top, m["id"], m.get("script_dependencies") or [])
+                res = redscript.compile_scripts(game, redscript.project_script_dirs(root), m["id"],
+                                                m.get("script_dependencies") or [])
                 for d in res["errors"]:
                     rep.add("error", "RS-COMPILE", d["message"] + (" " + " | ".join(d["detail"][:3]) if d["detail"] else ""),
                             d.get("file"), d.get("line"), compiler_code=d.get("code"))
@@ -356,22 +375,34 @@ def check_project(root: Path, game_arg: str | None = None, compile_scripts: bool
     _xl_check([f for f in files if f.name.endswith(".archive.xl")], rep, root)
     _xml_check([f for f in files if f.suffix == ".xml" and "r6/input" in f.as_posix()], rep, root)
     for info in [f for f in files if f.name == "info.json" and "/mods/" in "/" + f.relative_to(game_dir).as_posix()]:
-        data = load_json(info)
+        rep.done("redmod info.json")
+        try:
+            data = load_json(info)
+        except (OSError, ValueError) as e:
+            rep.add("error", "REDMOD-INFO", f"info.json is not valid JSON: {str(e)[:200]}", rel(info, root))
+            continue
+        if not isinstance(data, dict):
+            rep.add("error", "REDMOD-INFO", "info.json must be a JSON object with name and version", rel(info, root))
+            continue
         for k in ("name", "version"):
             if not data.get(k):
                 rep.add("error", "REDMOD-INFO", f"info.json needs '{k}'", rel(info, root))
-        rep.done("redmod info.json")
     for y in [f for f in files if f.suffix in (".yaml", ".yml") and "r6/audioware" in f.as_posix()]:
+        rep.done("audioware manifests")
         try:
             doc = parse_yaml(y) or {}
         except Exception as e:
             rep.add("error", "AUDIOWARE-YAML", f"does not parse: {str(e)[:200]}", rel(y, root))
             continue
-        for key, entry in (doc.get("sfx") or {}).items():
+        sfx = (doc.get("sfx") or {}) if isinstance(doc, dict) else None
+        if not isinstance(sfx, dict):
+            rep.add("error", "AUDIOWARE-YAML", "expected a mapping with 'sfx:' mapping event names to entries",
+                    rel(y, root))
+            continue
+        for key, entry in sfx.items():
             fname = entry.get("file") if isinstance(entry, dict) else None
             if fname and not (y.parent / fname).is_file():
                 rep.add("warning", "AUDIOWARE-FILE", f"sfx '{key}': file '{fname}' not found next to the manifest", rel(y, root))
-        rep.done("audioware manifests")
     if "red4ext" in m.get("kinds", []):
         dll = game_dir / "red4ext" / "plugins" / m["id"] / f"{m['id']}.dll"
         if not dll.is_file():

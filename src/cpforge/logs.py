@@ -15,8 +15,9 @@ WARN = re.compile(r"\[(warn|warning)\]", re.I)
 NOISE = re.compile(r"0 errors|no errors|errors: 0|error_reporter|ErrorReporter", re.I)
 
 
-def _newest(pattern: str) -> Path | None:
-    hits = [Path(p) for p in glob.glob(pattern)]
+def _newest(root: Path, pattern: str) -> Path | None:
+    # glob.escape keeps '[' or '?' in the game path literal.
+    hits = [Path(p) for p in glob.glob(os.path.join(glob.escape(str(root)), pattern))]
     hits = [h for h in hits if h.is_file()]
     return max(hits, key=lambda p: p.stat().st_mtime) if hits else None
 
@@ -79,7 +80,7 @@ def collect(game_root: Path, max_lines: int = 25, mod: str | None = None) -> dic
         "bin/x64/plugins/cyber_engine_tweaks/cyber_engine_tweaks.log", "bin/x64/plugins/cyber_engine_tweaks/scripting.log",
     ]
     for pat in patterns:
-        p = _newest(str(game_root / pat))
+        p = _newest(game_root, pat)
         if p:
             report["sources"].append(_scan_generic(p, game_root, max_lines))
     cet_mods = game_root / "bin/x64/plugins/cyber_engine_tweaks/mods"

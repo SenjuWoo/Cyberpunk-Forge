@@ -19,12 +19,15 @@ def read_bin(path: Path) -> dict[int, int]:
     magic, _bv, _pv, _chk, _fo, ro, _qo, _go = struct.unpack_from("<IiiIiiii", data, 0)
     if magic != BIN_MAGIC:
         raise ForgeError(f"not a tweakdb.bin (magic {magic:#x}): {path}")
-    count = struct.unpack_from("<i", data, ro)[0]
     out = {}
-    base = ro + 4
-    for i in range(count):
-        tid, key = struct.unpack_from("<QI", data, base + i * 12)
-        out[tid & LOW40] = key
+    try:
+        count = struct.unpack_from("<i", data, ro)[0]
+        base = ro + 4
+        for i in range(count):
+            tid, key = struct.unpack_from("<QI", data, base + i * 12)
+            out[tid & LOW40] = key
+    except struct.error as e:
+        raise ForgeError(f"tweakdb.bin is truncated or damaged: {path}", "verify the game files in your launcher") from e
     return out
 
 
@@ -50,15 +53,20 @@ def _red_string(data: bytes, pos: int) -> tuple[str, int]:
 def read_str(path: Path) -> dict[str, list[str]]:
     """Names from a tweakdb .str file (written by REDmod deploy)."""
     data = Path(path).read_bytes()
+    if len(data) < 20:
+        raise ForgeError(f"not a tweakdb .str file: {path}")
     magic, _ver, nrec, nflat, nq = struct.unpack_from("<IIIII", data, 0)
     if magic != STR_MAGIC:
         raise ForgeError(f"not a tweakdb .str file: {path}")
     pos = 20
     out: dict[str, list[str]] = {"records": [], "flats": [], "queries": []}
-    for key, n in (("records", nrec), ("flats", nflat), ("queries", nq)):
-        for _ in range(n):
-            s, pos = _red_string(data, pos)
-            out[key].append(s)
+    try:
+        for key, n in (("records", nrec), ("flats", nflat), ("queries", nq)):
+            for _ in range(n):
+                s, pos = _red_string(data, pos)
+                out[key].append(s)
+    except IndexError as e:
+        raise ForgeError(f"tweakdb .str file is truncated: {path}", "deploy REDmod again to rewrite it") from e
     return out
 
 

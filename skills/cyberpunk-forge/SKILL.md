@@ -3,7 +3,7 @@ name: cyberpunk-forge
 description: Make, check, fix, package and publish Cyberpunk 2077 mods with Cyberpunk Forge (cpforge). Use for redscript, Cyber Engine Tweaks Lua, TweakXL, ArchiveXL, RED4ext C++ plugins, Input Loader, Mod Settings, Audioware, REDmod, WolvenKit archives, mod conflicts, broken mods after a game patch, redscript compile errors, CET errors, and Nexus releases.
 ---
 
-# Cyberpunk Forge (cpforge 0.5.1)
+# Cyberpunk Forge (cpforge 0.6.0)
 
 Use the forge as the evidence layer. Never write a class, method, record or
 resource path from memory when `cpforge` can read it from the installed game.
@@ -56,7 +56,9 @@ Audioware for sound, REDmod only when a REDmod package is required.
 
 - The game folder and mod-manager staging are read-only except through
   `cpforge deploy` (receipt + backups; `undeploy` reverses it). Warn the user
-  when Vortex manages the game folder.
+  when Vortex manages the game folder. Deploy refuses to overwrite a file it
+  did not write, or one edited in the game folder since, unless `--force`
+  (which backs it up); a failed deploy still leaves a receipt for `undeploy`.
 - Report evidence tiers separately: static check, compile, package, in-game
   load, gameplay. A clean compile is not a runtime result.
 - Facts with provenance: `cpforge facts <key>`. If a fact is marked `docs` or

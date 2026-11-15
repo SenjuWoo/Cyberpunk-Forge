@@ -894,6 +894,283 @@ class CliTests(Base):
         self.assertIn("fix", d)
 
 
+class DeploySafetyTests(Base):
+    def new(self, kinds):
+        out = self.tmp / "proj"
+        project.new_project("Test Mod", kinds, out, "Tester", "desc")
+        return out
+
+    def test_force_never_writes_through_a_hard_link(self):
+        # Mod managers deploy by hard link: the game file and the staging file are one inode.
+        out = self.new(["redscript"])
+        staging = self.tmp / "staging" / "TestMod.reds"
+        staging.parent.mkdir()
+        staging.write_text("STAGED ORIGINAL", encoding="utf-8")
+        target = self.game / "r6/scripts/TestMod/TestMod.reds"
+        target.parent.mkdir(parents=True)
+        try:
+            os.link(staging, target)
+        except OSError:
+            self.skipTest("hard links are not available here")
+        deploy.deploy(out, self.game, force=True)
+        self.assertIn("wrapMethod", target.read_text(encoding="utf-8"))
+        self.assertEqual(staging.read_text(encoding="utf-8"), "STAGED ORIGINAL")
+        deploy.undeploy(out)
+        self.assertEqual(target.read_text(encoding="utf-8"), "STAGED ORIGINAL")
+        self.assertEqual(staging.read_text(encoding="utf-8"), "STAGED ORIGINAL")
+
+    def test_redeploy_does_not_overwrite_a_file_edited_in_the_game_folder(self):
+        out = self.new(["tweakxl"])
+        deploy.deploy(out, self.game)
+        f = self.game / "r6/tweaks/TestMod/TestMod.yaml"
+        f.write_text("EDITED IN THE GAME FOLDER", encoding="utf-8")
+        with self.assertRaises(util.ForgeError):
+            deploy.deploy(out, self.game)
+        self.assertEqual(f.read_text(encoding="utf-8"), "EDITED IN THE GAME FOLDER")
+        r = deploy.deploy(out, self.game, force=True)
+        self.assertEqual(len(r["changed_backed_up"]), 1)
+        self.assertEqual(Path(r["changed_backed_up"][0]).read_text(encoding="utf-8"), "EDITED IN THE GAME FOLDER")
+        # An unchanged redeploy, and one where the game copy already equals the project copy, pass.
+        deploy.deploy(out, self.game)
+        (out / "game/r6/tweaks/TestMod/TestMod.yaml").write_text("SAME", encoding="utf-8")
+        f.write_text("SAME", encoding="utf-8")
+        deploy.deploy(out, self.game)
+
+    def test_failed_deploy_still_records_what_it_wrote(self):
+        out = self.new(["redscript", "tweakxl"])
+        blocker = self.game / "r6/tweaks/TestMod"  # a file where the mod needs a folder
+        blocker.write_text("in the way", encoding="utf-8")
+        with self.assertRaises(util.ForgeError):
+            deploy.deploy(out, self.game)
+        written = self.game / "r6/scripts/TestMod/TestMod.reds"
+        self.assertTrue(written.is_file())
+        receipt = util.load_json(out / deploy.RECEIPT)
+        self.assertEqual([f["path"] for f in receipt["files"]], ["r6/scripts/TestMod/TestMod.reds"])
+        deploy.undeploy(out)
+        self.assertFalse(written.exists())
+        self.assertFalse(any((self.game / "r6/scripts").rglob("*.cpforge-tmp")))
+
+    def test_undeploy_keeps_the_receipt_when_the_game_folder_is_unreachable(self):
+        out = self.new(["tweakxl"])
+        deploy.deploy(out, self.game)
+        self.game.rename(self.tmp / "moved")
+        with self.assertRaises(util.ForgeError):
+            deploy.undeploy(out)
+        self.assertTrue((out / deploy.RECEIPT).is_file())
+
+    def test_undeploy_names_the_backup_of_a_file_it_left_in_place(self):
+        out = self.new(["redscript"])
+        target = self.game / "r6/scripts/TestMod/TestMod.reds"
+        target.parent.mkdir(parents=True)
+        target.write_text("ORIGINAL", encoding="utf-8")
+        deploy.deploy(out, self.game, force=True)
+        target.write_text("edited after deploy", encoding="utf-8")
+        u = deploy.undeploy(out)
+        self.assertEqual(u["kept_changed"], ["r6/scripts/TestMod/TestMod.reds"])
+        self.assertEqual(Path(u["backups_not_restored"][0]["backup"]).read_text(encoding="utf-8"), "ORIGINAL")
+
+
+class CompileStagingTests(Base):
+    def test_every_script_is_staged_once(self):
+        out = self.tmp / "proj"
+        project.new_project("Test Mod", ["redscript"], out)
+        scripts = out / "game/r6/scripts"
+        (scripts / "Other").mkdir()
+        (scripts / "Other/TestMod.reds").write_text("// same file name, other folder\n", encoding="utf-8")
+        (scripts / "Loose.reds").write_text("// directly in r6/scripts\n", encoding="utf-8")
+        self.assertEqual(redscript.project_script_dirs(out), [scripts])
+        staged = redscript.stage_sources(redscript.project_script_dirs(out), self.tmp / "stage")
+        self.assertEqual(sorted(s.relative_to(scripts).as_posix() for s in staged.values()),
+                         ["Loose.reds", "Other/TestMod.reds", "TestMod/TestMod.reds"])
+        for target, source in staged.items():
+            self.assertEqual(target.read_bytes(), source.read_bytes())
+        # Two folders passed separately must not collapse onto one file either.
+        staged = redscript.stage_sources([scripts / "Other", scripts / "TestMod"], self.tmp / "stage2")
+        self.assertEqual(len(staged), 2)
+
+    def test_keep_folder_is_only_cleared_when_the_forge_made_it(self):
+        keep = self.tmp / "keep"
+        (keep / "scripts").mkdir(parents=True)
+        (keep / "scripts/mine.reds").write_text("not the forge's", encoding="utf-8")
+        with self.assertRaises(util.ForgeError):
+            redscript.scratch_dir(keep)
+        self.assertTrue((keep / "scripts/mine.reds").is_file())
+        fresh = self.tmp / "fresh"
+        work = redscript.scratch_dir(fresh)
+        (work / "scripts/old.reds").write_text("left by the last run", encoding="utf-8")
+        redscript.scratch_dir(fresh)
+        self.assertFalse((fresh / "scripts/old.reds").exists())
+
+
+class NamedFailureTests(Base):
+    """Ordinary bad input is a finding or a named failure, never exit 3."""
+
+    def new(self, kinds, name="Test Mod", description="desc"):
+        out = self.tmp / "proj"
+        project.new_project(name, kinds, out, "Tester", description)
+        return out
+
+    def test_res_check_without_a_game(self):
+        from cpforge import game as G
+        os.environ.pop("CP2077_ROOT", None)
+        saved, G.candidates = G.candidates, lambda: []
+        try:
+            p = self.tmp / "x.mesh.json"
+            p.write_text(json.dumps(wk_doc(synthetic_mesh())), encoding="utf-8")
+            code, d = run_cli("res", "check", str(p))
+        finally:
+            G.candidates = saved
+        self.assertEqual(code, 0, d)
+        self.assertIsNone(d["references"]["unresolved"])
+
+    def test_unreadable_index_is_named(self):
+        index.build(self.game)
+        (index.index_dir(self.game) / "index.json.gz").write_bytes(b"garbage")
+        index._CACHE.clear()
+        code, d = run_cli("doctor")
+        self.assertEqual(code, 0, d)
+        self.assertIsNone(d["game"]["index"]["built"])
+        code, d = run_cli("api", "search", "Player")
+        self.assertEqual(code, 2, d)
+        self.assertIn("cpforge index", d["fix"])
+
+    def test_malformed_project_files_are_findings(self):
+        cases = (("redmod", "game/mods/TestMod/info.json", "{bad", "REDMOD-INFO"),
+                 ("redmod", "game/mods/TestMod/info.json", "[1]", "REDMOD-INFO"),
+                 ("archivexl", "game/archive/pc/mod/TestMod.archive.xl", "- a\n- b\n", "XL-YAML"),
+                 ("audioware", "game/r6/audioware/TestMod/TestMod.yaml", "- a\n", "AUDIOWARE-YAML"),
+                 ("audioware", "game/r6/audioware/TestMod/TestMod.yaml", "sfx:\n  - a\n", "AUDIOWARE-YAML"))
+        for kind, relp, body, expected in cases:
+            with self.subTest(file=relp, body=body):
+                shutil.rmtree(self.tmp / "proj", ignore_errors=True)
+                out = self.new([kind])
+                (out / relp).write_text(body, encoding="utf-8")
+                code, d = run_cli("check", "--project", str(out))
+                self.assertEqual(code, 1, d)
+                self.assertIn(expected, [e["code"] for e in d["errors"]])
+
+    def test_corrupt_archive_next_to_xl_is_a_finding(self):
+        out = self.new(["archivexl"])
+        (out / "game/archive/pc/mod/TestMod.archive").write_bytes(b"not an archive at all, but long enough to read a header")
+        r = check.check_project(out)
+        self.assertIn("XL-ARCHIVE", [e["code"] for e in r["errors"]])
+
+    def test_truncated_tweakdb_is_named(self):
+        p = self.game / "r6/cache/tweakdb.bin"
+        p.write_bytes(p.read_bytes()[:40])
+        code, d = run_cli("tweak", "exists", "Items.X")
+        self.assertEqual(code, 2, d)
+
+    def test_new_with_characters_a_folder_cannot_hold(self):
+        cwd = os.getcwd()
+        os.chdir(self.tmp)
+        try:
+            code, d = run_cli("new", "Mod: Redux?", "--kind", "tweakxl")
+        finally:
+            os.chdir(cwd)
+        self.assertEqual(code, 0, d)
+        self.assertEqual(d["id"], "ModRedux")
+        self.assertTrue((Path(d["project"]) / "cpforge.json").is_file())
+
+    def test_version_mirror_that_cannot_be_read_is_reported(self):
+        out = self.new(["redmod"])
+        (out / "game/mods/TestMod/info.json").write_text('{"name": "TestMod", "ver": "9.9.9"}', encoding="utf-8")
+        r = check.check_project(out)
+        self.assertIn("VERSION-PATTERN", [w["code"] for w in r["warnings"]])
+        b = project.bump(out, "minor")
+        self.assertEqual([s["path"] for s in b["skipped"]], ["game/mods/TestMod/info.json"])
+        (out / "game/mods/TestMod/info.json").unlink()
+        r = check.check_project(out)
+        self.assertIn("VERSION-FILE-MISSING", [w["code"] for w in r["warnings"]])
+
+    def test_source_secrets_are_scanned_under_a_folder_named_build(self):
+        out = self.tmp / "build" / "proj"
+        project.new_project("Test Mod", ["redscript"], out)
+        (out / "source").mkdir(exist_ok=True)
+        (out / "source/notes.txt").write_text("key sk-ant-" + "a" * 30, encoding="utf-8")
+        (out / "source/build").mkdir()
+        (out / "source/build/gen.txt").write_text("key sk-ant-" + "b" * 30, encoding="utf-8")
+        r = check.check_project(out)
+        hits = [w["file"] for w in r["warnings"] if w["code"] == "SECRET-SOURCE"]
+        self.assertEqual(hits, ["source/notes.txt"])
+
+    def test_stale_tool_variable_does_not_hide_a_tool_on_path(self):
+        from cpforge import game as G
+        saved_env, saved_which = os.environ.get("CPFORGE_LUA"), shutil.which
+        os.environ["CPFORGE_LUA"] = str(self.tmp / "gone" / "luajit.exe")
+        shutil.which = lambda name, *a, **k: ("/found/luajit" if name == "luajit" else None)
+        try:
+            self.assertEqual(G.find_tool("luajit"), "/found/luajit")
+        finally:
+            shutil.which = saved_which
+            if saved_env is None:
+                os.environ.pop("CPFORGE_LUA", None)
+            else:
+                os.environ["CPFORGE_LUA"] = saved_env
+
+    def test_conflicts_without_an_index_still_reports_archives_and_tweaks(self):
+        code, d = run_cli("conflicts")
+        self.assertEqual(code, 0, d)
+        self.assertIn("skipped", d["scripts"])
+        self.assertIn("archives", d)
+        self.assertIn("tweaks", d)
+        code, d = run_cli("conflicts", "--what", "scripts")
+        self.assertEqual(code, 2)
+
+    def test_inventory_counts_folders_and_survives_brackets_in_the_path(self):
+        from cpforge import game as G
+        for name in ("plain", "Games [SSD] (x)"):
+            with self.subTest(folder=name):
+                g = make_game(self.tmp / name / "Cyberpunk 2077")
+                (g / "r6/scripts/ModA").mkdir()
+                (g / "r6/scripts/loose.reds").write_text("", encoding="utf-8")
+                (g / "r6/scripts/__folder_managed_by_vortex").write_text("", encoding="utf-8")
+                (g / "red4ext/logs").mkdir(parents=True)
+                (g / "red4ext/logs/red4ext.log").write_text("[error] boom\n", encoding="utf-8")
+                s = G.inventory(g)["surfaces"]
+                self.assertEqual((s["redscript_mods"], s["redscript_loose_files"]), (1, 1))
+                self.assertEqual([x["file"] for x in logs.collect(g)["sources"]], ["red4ext/logs/red4ext.log"])
+
+    def test_names_with_quotes_render_valid_files(self):
+        name, desc = 'Bob\'s "Best" Mod', 'Say "hi" \\ there'
+        out = self.new(["redmod", "cet", "modsettings", "redscript"], name, desc)
+        info = json.loads((out / "game/mods/BobSBestMod/info.json").read_text(encoding="utf-8"))
+        self.assertEqual(info["description"], desc)
+        lua = (out / "game/bin/x64/plugins/cyber_engine_tweaks/mods/BobSBestMod/init.lua").read_text(encoding="utf-8")
+        self.assertIn("ImGui.Begin('Bob\\'s \\\"Best\\\" Mod')", lua)
+        reds = (out / "game/r6/scripts/BobSBestMod/BobSBestModSettings.reds").read_text(encoding="utf-8")
+        self.assertIn('@runtimeProperty("ModSettings.mod", "Bob\'s \\"Best\\" Mod")', reds)
+        self.assertEqual(project.load_manifest(out)["name"], name)
+        code, d = run_cli("check", "--project", str(out))
+        self.assertNotEqual(code, 3, d)
+
+    def test_adding_a_kind_keeps_the_project_identity(self):
+        out = self.new(["redscript"])
+        r = project.new_project("Other Name", ["cet", "redmod"], out, force=True)
+        self.assertEqual(r["id"], "TestMod")
+        self.assertTrue((out / "game/bin/x64/plugins/cyber_engine_tweaks/mods/TestMod/init.lua").is_file())
+        self.assertFalse((out / "game/bin/x64/plugins/cyber_engine_tweaks/mods/OtherName").exists())
+        project.new_project("Test Mod", ["redmod"], out, force=True)
+        self.assertEqual(len(project.load_manifest(out)["version_files"]), 1)
+
+    def test_validate_does_not_inflate_binary_members(self):
+        z = self.tmp / "m.zip"
+        with zipfile.ZipFile(z, "w") as f:
+            f.writestr("archive/pc/mod/Big.archive", b"\0" * 4096)
+            f.writestr("r6/scripts/M/a.reds", "// ok\n")
+        read, saved = [], zipfile.ZipFile.read
+
+        def spy(self_, member, *a, **k):
+            read.append(getattr(member, "filename", member))
+            return saved(self_, member, *a, **k)
+        zipfile.ZipFile.read = spy
+        try:
+            package.validate(z)
+        finally:
+            zipfile.ZipFile.read = saved
+        self.assertEqual(read, ["r6/scripts/M/a.reds"])
+
+
 class PayloadTests(unittest.TestCase):
     def test_routes_reference_real_docs_and_templates(self):
         routes = util.load_json(util.KNOWLEDGE_DIR / "routes.json")["routes"]

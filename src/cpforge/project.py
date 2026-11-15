@@ -11,6 +11,7 @@ Project layout:
 from __future__ import annotations
 
 import datetime
+import json
 import re
 import shutil
 from pathlib import Path
@@ -61,9 +62,23 @@ def load_manifest(root: Path) -> dict:
     return m
 
 
-def _render(text: str, values: dict) -> str:
+# Free-text values land inside string literals; each file type gets its own escaping so a name
+# with quotes or backslashes still gives valid JSON, Lua and redscript.
+FREE_TEXT = ("NAME", "DESCRIPTION", "AUTHOR")
+
+
+def _escape(value: str, suffix: str) -> str:
+    if suffix == ".json":
+        return json.dumps(value)[1:-1]
+    if suffix in (".lua", ".reds", ".cpp", ".hpp", ".h"):
+        out = value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
+        return out.replace("'", "\\'") if suffix == ".lua" else out
+    return value.replace("\n", " ")
+
+
+def _render(text: str, values: dict, suffix: str = "") -> str:
     for k, v in values.items():
-        text = text.replace("{{" + k + "}}", v)
+        text = text.replace("{{" + k + "}}", _escape(v, suffix) if k in FREE_TEXT else v)
     return text
 
 
@@ -73,11 +88,20 @@ def new_project(name: str, kinds: list[str], out_dir: Path, author: str = "", de
     unknown = [k for k in kinds if k not in available]
     if unknown:
         raise ForgeError(f"unknown template(s): {', '.join(unknown)}", "available: " + ", ".join(available))
-    ident = make_id(name)
     root = out_dir
     if root.exists() and any(root.iterdir()) and not force:
         raise ForgeError(f"{root} is not empty", "choose an empty folder or pass --force to add files to it")
-    values = {"NAME": name, "ID": ident, "AUTHOR": author or "Unknown", "VERSION": "0.1.0",
+    manifest_path = root / MANIFEST
+    existing = load_manifest(root) if manifest_path.is_file() else None
+    # Adding kinds to an existing project keeps its identity: files are named after the manifest's id.
+    if existing:
+        name, ident = existing["name"], existing["id"]
+        author = author or existing.get("author", "")
+        description = description or existing.get("description", "")
+        version = existing["version"]
+    else:
+        ident, version = make_id(name), "0.1.0"
+    values = {"NAME": name, "ID": ident, "AUTHOR": author or "Unknown", "VERSION": version,
               "YEAR": str(datetime.date.today().year), "DESCRIPTION": description or name,
               "ID_LOWER": ident.lower(), "FORGE_VERSION": __version__}
     written, skipped = [], []
@@ -95,7 +119,8 @@ def new_project(name: str, kinds: list[str], out_dir: Path, author: str = "", de
                 continue
             dest.parent.mkdir(parents=True, exist_ok=True)
             if src.suffix.lower() in TEXT_SUFFIXES or src.name in (".gitignore",):
-                dest.write_text(_render(src.read_text(encoding="utf-8"), values), encoding="utf-8", newline="\n")
+                dest.write_text(_render(src.read_text(encoding="utf-8"), values, src.suffix.lower()),
+                                encoding="utf-8", newline="\n")
             else:
                 shutil.copy2(src, dest)
             written.append(relp)
@@ -103,13 +128,14 @@ def new_project(name: str, kinds: list[str], out_dir: Path, author: str = "", de
             requires.setdefault(r["id"], r)
         for vf in available[kind].get("version_files", []):
             version_files.append({"path": vf["path"].replace("__ID__", ident), "pattern": vf["pattern"]})
-    manifest_path = root / MANIFEST
-    if manifest_path.is_file():
-        manifest = load_json(manifest_path)
+    if existing:
+        manifest = existing
         manifest["kinds"] = sorted(set(manifest.get("kinds", [])) | set(kinds))
         have = {r["id"] for r in manifest.get("requires", [])}
         manifest.setdefault("requires", []).extend(r for r in requires.values() if r["id"] not in have)
-        manifest.setdefault("version_files", []).extend(version_files)
+        have_vf = {(v.get("path"), v.get("pattern")) for v in manifest.get("version_files", [])}
+        manifest.setdefault("version_files", []).extend(
+            v for v in version_files if (v["path"], v["pattern"]) not in have_vf)
     else:
         manifest = {"schema": 1, "name": name, "id": ident, "version": "0.1.0", "author": values["AUTHOR"],
                     "description": values["DESCRIPTION"], "kinds": kinds, "game_patch": "2.5",
@@ -125,6 +151,23 @@ def new_project(name: str, kinds: list[str], out_dir: Path, author: str = "", de
             written.append(extra)
     return {"project": str(root), "id": ident, "kinds": manifest["kinds"], "written": written, "skipped": skipped,
             "next": ["cpforge check --project " + str(root), "cpforge package --project " + str(root)]}
+
+
+def read_version_mirror(root: Path, vf: dict) -> tuple[str | None, str]:
+    """(version found, "") or (None, why it could not be read) for one manifest version_files entry."""
+    p = root / str(vf.get("path", ""))
+    if not vf.get("path") or not p.is_file():
+        return None, "file not found"
+    try:
+        rx = re.compile(vf.get("pattern", ""))
+    except re.error as e:
+        return None, f"pattern is not a valid regular expression ({e})"
+    if "v" not in rx.groupindex:
+        return None, "pattern is not usable: it has no (?P<v>...) group"
+    hit = rx.search(p.read_text(encoding="utf-8", errors="replace"))
+    if not hit:
+        return None, "pattern no longer matches the file"
+    return hit.group("v"), ""
 
 
 def bump(root: Path, part: str) -> dict:
@@ -148,15 +191,15 @@ def bump(root: Path, part: str) -> dict:
         kg.mkdir(parents=True, exist_ok=True)
         shutil.copy2(old_zip, kg / old_zip.name)
         kept = str(kg / old_zip.name)
+    skipped = []
     for vf in m.get("version_files", []):
+        found, why = read_version_mirror(root, vf)
+        if found is None:
+            skipped.append({"path": vf.get("path"), "why": why})
+            continue
         p = root / vf["path"]
-        if not p.is_file():
-            continue
         text = p.read_text(encoding="utf-8")
-        rx = re.compile(vf["pattern"])
-        hit = rx.search(text)
-        if not hit or "v" not in rx.groupindex:
-            continue
+        hit = re.compile(vf["pattern"]).search(text)
         text = text[: hit.start("v")] + new + text[hit.end("v"):]
         p.write_text(text, encoding="utf-8", newline="\n")
         changed.append(vf["path"])
@@ -172,8 +215,11 @@ def bump(root: Path, part: str) -> dict:
             text = text[:idx] + head + text[idx:] if idx >= 0 else text + "\n" + head
             cl.write_text(text, encoding="utf-8", newline="\n")
             changed.append("CHANGELOG.md")
-    return {"old": old, "new": new, "changed": changed, "known_good": kept,
-            "next": "write the CHANGELOG.md entry, then cpforge check and cpforge package"}
+    out = {"old": old, "new": new, "changed": changed, "known_good": kept, "skipped": skipped,
+           "next": "write the CHANGELOG.md entry, then cpforge check and cpforge package"}
+    if skipped:
+        out["warning"] = "some version mirrors were not updated: fix their path or pattern in cpforge.json"
+    return out
 
 
 def changelog_entries(root: Path) -> list[dict]:

@@ -19,11 +19,13 @@
 | `game.py` | game discovery (arg, env, Steam, GOG, Epic), versions, frameworks, inventory |
 | `index.py` | API + TweakDB index from REDmod sources, metadata.json, installed .reds |
 | `archive.py`, `tweakdb.py` | binary readers (RDAR, tweakdb.bin, .str), TweakXL YAML |
+| `tweaksrc.py` | RED `.tweak` source parser (structure, records, strings) |
+| `resource.py` | WolvenKit JSON: `res check`/`inspect`/`roundtrip`, animset/rig pairing |
 | `redscript.py` | scc.exe scratch compile, diagnostics parser, static hook checks |
 | `check.py` | project validation, reports errors / warnings / gaps / checked |
 | `project.py` | manifest, templates, bump, changelog parsing |
 | `package.py` | deterministic zip, receipt, zip validation, secret scan |
-| `deploy.py` | deploy/undeploy with receipt and backups |
+| `deploy.py` | deploy/undeploy with receipt and backups; writes by rename (hard-link safe) |
 | `build.py` | CMake (RED4ext) and WolvenKit CLI (archive) builds |
 | `logs.py`, `conflicts.py`, `nexus.py`, `knowledge.py`, `doctor.py` | as named |
 
@@ -34,6 +36,9 @@
 3. Against a real install: `cpforge doctor`, `cpforge index`, then
    `cpforge new T --kind <each>` + `cpforge check --compile` in a temp folder.
 4. Update `CHANGELOG.md`, `STATE.md`, and bump `__version__` together.
+5. Ordinary bad input (malformed project file, damaged index or game file,
+   missing game) is a finding (exit 1) or a named failure (exit 2), never
+   exit 3. Exit 3 is reserved for forge bugs.
 
 ## Boundaries
 
