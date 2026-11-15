@@ -8,8 +8,11 @@ and check each step before the next.
 Source of these notes: a complete car build on game 2.5 with WolvenKit CLI 9.1,
 ArchiveXL 1.28, TweakXL 1.12 and Blender 5, on the Archer Hella as the base car.
 Every rule was checked with tool output (WolvenKit round trips, mesh and bbox
-comparisons, `cpforge` checks); none of it is in-game proof yet. Confirm
-against your own base car before relying on a number.
+comparisons, `cpforge` checks). In game the car summons, shows its paints,
+headlights, light bar, plate and taillights, opens its doors on the new hinges,
+deforms in crashes, and sits with its wheels centred in the arches after the
+animset fix in section 4. Confirm against your own base car before relying on a
+number.
 
 ## 1. Pipeline
 
@@ -68,9 +71,24 @@ against your own base car before relying on a number.
   the base car's animations and animgraphs still map. Round-trip the rig through
   WolvenKit (`cpforge res roundtrip`); the size must stay equal to vanilla.
 - The Hella door, hood, trunk and window clips are additive (deltas), so they
-  swing around your new hinge positions and need no custom `.anims`. Clip
-  angles: doors 70 degrees about local Z, hood +49.5 and trunk -59.9 about
-  local X. Pose the parts at those angles in Blender to look for clipping.
+  swing around your new hinge positions and the animation data needs no
+  changes. Clip angles: doors 70 degrees about local Z, hood +49.5 and trunk
+  -59.9 about local X. Pose the parts at those angles in Blender to look for
+  clipping.
+- But ship your own copy of the base car's `.anims` with its root `rig` set to
+  your deformation rig (the data stays the same). The vanilla set names the base
+  car's rig, and `default_car_anim_graph` pulls the `vehicle_rig` bones in
+  through an additive pose built against that rig: the game then draws the
+  wheels at 2 x your suspension position minus the base car's, on the bones the
+  two rigs share. Verified in game: a 2.845 m wheelbase on the Hella (2.86 m
+  rig, suspension at 1.685) rendered at 2.32 m until the animset was copied.
+  Every vanilla car pairs its own `.anims` with its own deformation rig.
+  Repoint `animSet` in both `entAnimatedComponent`s (`vehicle_rig` and
+  `deformation_rig`), update the `.ent` `resolvedDependencies`, and give
+  `animations.hash` (the `animAnimSetup` hash on both components) a unique
+  value: vanilla changes it per animset, and it is not a plain path hash, so
+  reusing the base car's value risks a shared cached setup.
+  `cpforge res check <car>.ent` warns about this pairing (`RES-ENT-ANIMSET-RIG`).
 - Steering: `steering_wheel_zro` carries the column tilt (local +Y along the
   column, rotation Rx(-tilt)); `steering_wheel` counter-rotates so the wheel
   mesh stays model-aligned. Measure the tilt from the rim (PCA).
@@ -152,6 +170,8 @@ against your own base car before relying on a number.
   (rig paths, `vehicleChassisComponent.collisionResource`, FX and skid slot
   positions); replace `appearances`, `defaultAppearance`,
   `resolvedDependencies`.
+- Drop vanilla parts the new model replaces: the shared `fuelport_standard`
+  ring clips through a modelled fuel door.
 - `.app`: rebuild each appearance from a vanilla one: copy components with
   fresh inline handles and unique `id`s, rebuild the chunks and CruidDict, set the
   visual controller's `appearanceDependency` and `meshProxy`, the proxy
@@ -200,7 +220,42 @@ against your own base car before relying on a number.
 - inkatlas: `inkTextureAtlas` with `slots.Elements[3]` (4K, 1080p, 720p), each
   with `parts[{partName, clippingRectInUVCoords}]`.
 
-## 11. Pitfalls (symptom -> cause -> fix)
+## 11. Measuring in game (CET)
+
+Files can all agree and the game can still draw something else; measure where
+the slots actually are. With the car mounted or looked at, in the CET console:
+
+```lua
+local p = Game.GetPlayer()
+local v = Game.GetMountedVehicle(p) or Game.GetTargetingSystem():GetLookAtObject(p, false, false)
+local s = v:FindComponentByName(CName.new("vehicle_slots"))
+local o, F, R, U = v:GetWorldPosition(), v:GetWorldForward(), v:GetWorldRight(), v:GetWorldUp()
+local function dot(a, b) return a.x * b.x + a.y * b.y + a.z * b.z end
+for _, n in ipairs({"wheel_front_left", "wheel_front_right", "wheel_back_left", "wheel_back_right",
+                    "Base", "bumper_front", "bumper_back", "trunk_a"}) do
+  local ok, wt = s:GetSlotTransform(CName.new(n))
+  local w = WorldPosition.ToVector4(WorldTransform.GetWorldPosition(wt))
+  local d = Vector4.new(w.x - o.x, w.y - o.y, w.z - o.z, 0)
+  print(string.format("%-18s x=%.3f y=%.3f z=%.3f", n, dot(d, R), dot(d, F), dot(d, U)))
+end
+```
+
+- If `WorldPosition.ToVector4` is not available in your CET build, read the
+  FixedPoint position directly: `wt.Position.x.Bits / 131072` (17 fractional
+  bits), same for y and z.
+- CET hands `out` parameters back as extra return values:
+  `GetSlotTransform(name)` returns `ok, WorldTransform`. Passing a transform in
+  fails with "requires 1 parameter(s)".
+- Output is in the car's own frame (x right, y forward, z up). Compare with the
+  rig values. Body slots (Base, bumpers, trunk) printed next to the wheels tell a
+  wheel-only shift from a whole-frame shift.
+- `vehicle_slots` hangs on the deformation rig, so these are where the meshes
+  are drawn.
+- The applied wheel sizes: `TweakDB:GetRecord(v:GetRecordID()):VehWheelDimensionsSetup()`,
+  then `FrontPreset()` / `BackPreset()` and `WheelOffset()`, `TireRadius()`,
+  `TireWidth()`.
+
+## 12. Pitfalls (symptom -> cause -> fix)
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -212,8 +267,11 @@ against your own base car before relying on a number.
 | Paint previews washed out | AgX view transform and a bright world on metallic paint | Standard view transform |
 | Wrong inline record used for engine data | guessed name | look it up with `cpforge tweak show` |
 | `.app` will not deserialize with several appearances | repeated handles or BufferId | re-id per appearance (`cpforge res check` names it) |
+| Wheels too close together (or too far apart) in game, body fine | base car's `.anims` still names the base car's rig | own `.anims` copy with `rig` = your deformation rig, unique `animations.hash` (`cpforge res check` names it) |
+| Fuel-port ring pokes through the body | vanilla `fuelport_standard` component kept beside a modelled fuel door | remove that component |
+| CET probe errors "requires 1 parameter(s)" | `out` parameter passed in | take it as the second return value |
 
-## 12. Forge commands for vehicle work
+## 13. Forge commands for vehicle work
 
 - `cpforge plan "<car request>"` routes to these notes and the steps.
 - `cpforge doctor` shows the WolvenKit CLI it found (PATH, `WOLVENKIT_CLI`, the
@@ -221,7 +279,9 @@ against your own base car before relying on a number.
 - `cpforge res check <files>`: handle, BufferId, ResourcePath, CruidDict,
   components-vs-chunks and mesh material rules on `.mesh`, `.app`, `.ent` (CR2W
   or WolvenKit JSON), and every referenced resource looked up in the project's
-  `source/archive` and the game's archives.
+  `source/archive` and the game's archives. On an `.ent` it reads the project's
+  own `.anims` and checks that each animset embeds the `deformation_rig`
+  component's rig and is listed in `resolvedDependencies`.
 - `cpforge res inspect <files>`: the same plus components, meshes, lights,
   slots and proxy per appearance.
 - `cpforge res roundtrip <files>`: CR2W -> JSON -> CR2W must give the same bytes

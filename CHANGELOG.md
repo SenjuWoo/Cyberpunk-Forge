@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0 - 2026-11-15
+
+- `cpforge res check` on an `.ent` checks the animset/rig pairing: every
+  animset the entity plays must embed the rig of its `deformation_rig`
+  component (the project's own `.anims` is read through WolvenKit), and must be
+  listed in `resolvedDependencies`. A car that keeps the base car's `.anims`
+  with its own deformation rig gets `RES-ENT-ANIMSET-RIG`: in game that draws
+  the wheels at 2 x the car's suspension position minus the base car's.
+  Calibrated on a real car: its current entity passes, the same entity pointed
+  back at the base car's animset is flagged, and the vanilla entity passes.
+- `knowledge vehicles`: the animset/rig pairing and `animations.hash`, an
+  in-game slot probe for CET (out-parameters come back as return values), the
+  fuel-port component to drop, results from in-game tests, and new pitfall rows.
+
 ## 0.4.0 - 2026-11-15
 
 - `cpforge res check | inspect | roundtrip <files>` for game resources (CR2W or

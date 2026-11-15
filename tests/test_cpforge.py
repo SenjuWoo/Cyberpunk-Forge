@@ -444,7 +444,54 @@ def synthetic_app(dup_handles=False):
     return wk_doc({"$type": "appearanceAppearanceResource", "appearances": [a, b]})
 
 
+VANILLA_ANIMS = "base\\animations\\vehicle\\standard\\vehicle\\v_standard2_archer_hella.anims"
+VANILLA_DEF_RIG = "base\\vehicles\\standard\\v_standard2_archer_hella\\rig\\v_standard2_archer_hella_01__basic_01.rig"
+
+
+def synthetic_ent(animset=VANILLA_ANIMS, deformation_rig=VANILLA_DEF_RIG, deps=None):
+    def animated(cid, name, rig):
+        return {"$type": "entAnimatedComponent", "id": cid, "name": _cn(name), "rig": _path(rig),
+                "animations": {"$type": "animAnimSetup", "cinematics": [], "hash": "7081828910115425716",
+                               "gameplay": [{"$type": "animAnimSetupEntry", "animSet": _path(animset), "priority": 128}]}}
+    chunks = [{"$type": "vehicleCarBaseObject"},
+              animated("11", "vehicle_rig", "base\\vehicles\\base_rig\\v_base_x4_337_165_44\\v_base_x4_337_165_44.rig"),
+              animated("12", "deformation_rig", deformation_rig)]
+    root = {"$type": "entEntityTemplate", "components": [dict(c) for c in chunks[1:]],
+            "appearances": [{"$type": "entTemplateAppearance", "name": _cn("car_red"), "appearanceName": _cn("red"),
+                             "appearanceResource": _path("mymod\\car.app")}],
+            "resolvedDependencies": [_path(d)["DepotPath"] and _path(d) for d in (deps if deps is not None else [animset])],
+            "compiledData": {"BufferId": "0", "Data": {"CruidDict": {"0": "0", "1": "11", "2": "12"}, "Chunks": chunks}}}
+    return wk_doc(root)
+
+
+def synthetic_anims(rig):
+    return wk_doc({"$type": "animAnimSet", "rig": _path(rig), "animations": []})
+
+
 class ResourceTests(Base):
+    def test_ent_animset_must_embed_the_deformation_rig(self):
+        from cpforge import resource as R
+        own_rig, own_anims = "mymod\\rig\\car_deformation.rig", "mymod\\anims\\car.anims"
+        # Vanilla: the Hella animset embeds the Hella deformation rig (calibrated on 2.5).
+        self.assertEqual([w["code"] for w in R.check(synthetic_ent())["warnings"]], [])
+        # The Sonata bug: own deformation rig, base car's animset -> wheels drawn at 2*own - base.
+        w = R.check(synthetic_ent(deformation_rig=own_rig))["warnings"]
+        self.assertEqual([x["code"] for x in w], ["RES-ENT-ANIMSET-RIG"])
+        self.assertIn("ship your own copy", w[0]["message"])
+        # Own animset copy: its embedded rig is read through the resolver.
+        docs = {util.resource_hash(own_anims): synthetic_anims(own_rig)}
+        good = R.check(synthetic_ent(animset=own_anims, deformation_rig=own_rig), resolver=docs.get)
+        self.assertEqual(good["warnings"], [], good["warnings"])
+        self.assertEqual(good["summary"]["animsets"], [{"animset": own_anims, "embedded_rig": own_rig, "components":
+                                                        ["vehicle_rig", "deformation_rig"]}])
+        docs = {util.resource_hash(own_anims): synthetic_anims(VANILLA_DEF_RIG)}  # copied but rig not changed
+        w = R.check(synthetic_ent(animset=own_anims, deformation_rig=own_rig), resolver=docs.get)["warnings"]
+        self.assertEqual([x["code"] for x in w], ["RES-ENT-ANIMSET-RIG"])
+        # resolvedDependencies must list the animset.
+        w = R.check(synthetic_ent(animset=own_anims, deformation_rig=own_rig, deps=["mymod\\other.anims"]),
+                    resolver={util.resource_hash(own_anims): synthetic_anims(own_rig)}.get)["warnings"]
+        self.assertEqual([x["code"] for x in w], ["RES-ENT-DEPS"])
+
     def test_mesh_rules(self):
         from cpforge import resource as R
         r = R.check(synthetic_mesh())

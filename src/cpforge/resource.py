@@ -345,7 +345,7 @@ def app_check(rc: dict, index: dict) -> tuple[list[dict], dict]:
     return out, {"appearances": len(apps), "detail": apps}
 
 
-def ent_check(rc: dict, index: dict) -> tuple[list[dict], dict]:
+def ent_check(rc: dict, index: dict, resolver=None) -> tuple[list[dict], dict]:
     out = []
     chunks = _chunks(rc.get("compiledData"))
     entity = chunks[0].get("$type") if chunks else None
@@ -359,10 +359,67 @@ def ent_check(rc: dict, index: dict) -> tuple[list[dict], dict]:
         if not res or res == "0":
             out.append({"level": "error", "code": "RES-ENT-APP", "message": f"entity appearance '{cname(a.get('name'))}' has no .app"})
     comps = [_component(c, index) for c in comp_chunks]
+    f, animsets = _animset_check(rc, comp_chunks, resolver)
+    out += f
     return out, {"entity_object": entity, "default_appearance": cname(rc.get("defaultAppearance")),
                  "appearances": apps, "components": len(comps),
                  "slots": [c["name"] for c in comps if c["type"] == "entSlotComponent"],
+                 "animsets": animsets,
                  "types": dict(Counter(c["type"] for c in comps).most_common())}
+
+
+def _path_hash(depot) -> int | None:
+    v = str(cname(depot) or "")
+    if not v or v == "0":
+        return None
+    return int(v) if v.isdigit() else resource_hash(v)
+
+
+def _animset_check(rc: dict, comps: list[dict], resolver) -> tuple[list[dict], list[dict]]:
+    """Every animset an entity plays must embed the entity's own deformation rig.
+
+    A car on a vanilla base that keeps the base car's .anims draws the wheels at 2 x its own suspension
+    position minus the base car's (default_car_anim_graph pulls vehicle_rig bones in through an additive
+    pose built against the animset's rig). Every vanilla car pairs its own .anims with its own deformation rig.
+    """
+    animated = [c for c in comps if c.get("$type") == "entAnimatedComponent"]
+    deform = next((c for c in animated if cname(c.get("name")) == "deformation_rig"), None)
+    if not deform:
+        return [], []
+    d_rig = (deform.get("rig") or {}).get("DepotPath")
+    d_hash, d_show = _path_hash(d_rig), cname(d_rig)
+    sets: dict[int, dict] = {}
+    for c in animated:
+        for entry in ((c.get("animations") or {}).get("gameplay") or []):
+            depot = (entry.get("animSet") or {}).get("DepotPath")
+            h = _path_hash(depot)
+            if h is not None:
+                sets.setdefault(h, {"animset": cname(depot), "components": []})["components"].append(cname(c.get("name")))
+    out, summary = [], []
+    deps = {_path_hash((x or {}).get("DepotPath")) for x in rc.get("resolvedDependencies") or []}
+    for h, info in sets.items():
+        doc = resolver(h) if resolver else None
+        own_copy = doc is not None
+        rig = ((((doc or {}).get("Data") or {}).get("RootChunk") or {}).get("rig") or {}).get("DepotPath")
+        info["embedded_rig"] = cname(rig) if own_copy else None
+        summary.append(info)
+        vanilla_set = str(info["animset"]).lower().startswith(("base\\", "ep1\\"))
+        if own_copy and _path_hash(rig) != d_hash:
+            out.append({"level": "warning", "code": "RES-ENT-ANIMSET-RIG",
+                        "message": f"animset {info['animset']} embeds rig {cname(rig)}, but the deformation_rig component "
+                                   f"uses {d_show}; set the animset's rig to the deformation rig (wheels are otherwise "
+                                   "drawn at 2 x own suspension - base car's)"})
+        elif not own_copy and vanilla_set and d_show and not str(d_show).lower().startswith(("base\\", "ep1\\")):
+            out.append({"level": "warning", "code": "RES-ENT-ANIMSET-RIG",
+                        "message": f"own deformation rig {d_show} with the base car's animset {info['animset']}, whose "
+                                   "embedded rig is the base car's: the game draws the wheels at 2 x own suspension - "
+                                   "base car's. ship your own copy of the .anims with rig set to your deformation rig, "
+                                   "repoint both animated components and resolvedDependencies, and give "
+                                   "animations.hash a unique value"})
+        if deps and h not in deps:
+            out.append({"level": "warning", "code": "RES-ENT-DEPS",
+                        "message": f"animset {info['animset']} is not in the entity's resolvedDependencies"})
+    return out, summary
 
 
 # --- references --------------------------------------------------------------------
@@ -383,6 +440,21 @@ def tree_hashes(root: Path) -> dict[int, str]:
             relp = f.relative_to(root).as_posix()
             out[resource_hash(relp)] = relp.replace("/", "\\")
     return out
+
+
+def project_resolver(root: Path | None, names: dict[int, str]):
+    """hash -> WolvenKit JSON of a resource under the project's source/archive (loaded once), else None."""
+    cache: dict[int, dict | None] = {}
+
+    def resolve_hash(h: int):
+        if h not in cache:
+            rel_path = names.get(h)
+            try:
+                cache[h] = load(root / rel_path.replace("\\", "/")) if root and rel_path else None
+            except ForgeError:
+                cache[h] = None
+        return cache[h]
+    return resolve_hash
 
 
 _GAME_HASHES: dict[str, dict[int, str]] = {}
@@ -462,7 +534,8 @@ def name_hashes(doc: dict, names: dict[int, str]) -> None:
     _walk(doc, fn)
 
 
-def check(doc: dict) -> dict:
+def check(doc: dict, resolver=None) -> dict:
+    """resolver(hash) -> WolvenKit JSON of a project resource, or None (used for the .ent's animsets)."""
     rc = (doc.get("Data") or {}).get("RootChunk") or {}
     rtype = rc.get("$type")
     index = handle_index(doc)
@@ -475,7 +548,7 @@ def check(doc: dict) -> dict:
         f, summary = app_check(rc, index)
         findings += f
     elif rtype == "entEntityTemplate":
-        f, summary = ent_check(rc, index)
+        f, summary = ent_check(rc, index, resolver)
         findings += f
     errors = [x for x in findings if x.get("level") == "error"]
     warnings = [x for x in findings if x.get("level") == "warning"]

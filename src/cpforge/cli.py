@@ -187,7 +187,7 @@ def cmd_res(args):
             continue
         ref_findings, ref_summary = R.reference_check(doc, names, game_map)
         R.name_hashes(doc, names)
-        r = R.check(doc)
+        r = R.check(doc, resolver=R.project_resolver(root, names))
         r["warnings"] += [{k: v for k, v in x.items() if k != "level"} for x in ref_findings]
         r["references"] = ref_summary
         r["file"] = str(p)
