@@ -14,6 +14,10 @@ Audioware, REDmod. Facts come from the installed game.
   a whole-word `words` list on the new-asset route (plurals s/es), weight 2.
   "add a skirt to a vendor" -> new-asset; "a camp in the outskirts" and
   "horseshoes for a quest" -> not new-asset. 77 tests.
+- Released: CI (9 jobs) + CodeQL green on f98acbc; tag v0.6.2 published by the
+  Release workflow; downloaded zip SHA-256 b00e6135...740ee9 matches a local
+  `TZ=UTC git archive` of f98acbc. Open alerts: code scanning 0, Dependabot 0,
+  secret 0.
 
 ## Done (0.6.1) - README presentation and audit
 
