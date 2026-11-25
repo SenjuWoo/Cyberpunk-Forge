@@ -33,7 +33,7 @@ only when you run `cpforge deploy`.
 - **Release kit.** `package` makes a deterministic zip with a SHA-256 and a receipt. `validate` checks any mod zip for layout mistakes, dev files and leaked API keys. `bump` moves the version everywhere and keeps the last good zip, and `nexus` writes the page text.
 - **JSON everywhere.** Every command prints one JSON object and exits with a stable code: 0 ok, 1 findings, 2 a named failure with a `fix`, 3 a forge bug. People can read it, and scripts and agents can parse it.
 
-![Terminal: cpforge doctor reports forge 0.6.1 with CLI, payload and game status ok, the game folder Cyberpunk 2077 at file version 3.0.88.46235 (patch 2.5, Phantom Liberty installed), and the installed frameworks RED4ext 1.31.1.0, redscript, Cyber Engine Tweaks 1.38.1.0 and ArchiveXL 1.28.8.45702](docs/presentation/screenshot-doctor.png)
+![Terminal: cpforge doctor reports forge 0.6.2 with CLI, payload and game status ok, the game folder Cyberpunk 2077 at file version 3.0.88.46235 (patch 2.5, Phantom Liberty installed), and the installed frameworks RED4ext 1.31.1.0, redscript, Cyber Engine Tweaks 1.38.1.0 and ArchiveXL 1.28.8.45702](docs/presentation/screenshot-doctor.png)
 
 ## Install
 
@@ -120,7 +120,7 @@ commands and their options as JSON, generated from the parser.
 | Version and Nexus page | `cpforge bump major\|minor\|patch\|X.Y.Z` · `cpforge nexus` |
 | Build a new drivable car (step-by-step notes from a finished car build) | `cpforge plan "new drivable car"` · `cpforge knowledge vehicles` |
 
-![Terminal: cpforge plan "add a new jacket to a vendor" picks the tweak-data route, lists new-asset as also relevant and scaffolds --kind tweakxl --kind archivexl; cpforge tweak show Items.Preset_Lexington_Default confirms the record exists in TweakDB as a WeaponItem based on Preset_Base_Lexington, with its vanilla .tweak file; cpforge api class PlayerPuppet --filter OnGameAttached shows the vanilla protected event OnGameAttached returning Bool and the script file and line it is declared in](docs/presentation/screenshot-plan-lookup.png)
+![Terminal: cpforge plan "add a new jacket to a vendor" picks the new-asset route, lists tweak-data as also relevant and scaffolds --kind archivexl --kind tweakxl; cpforge tweak show Items.Preset_Lexington_Default confirms the record exists in TweakDB as a WeaponItem based on Preset_Base_Lexington, with its vanilla .tweak file; cpforge api class PlayerPuppet --filter OnGameAttached shows the vanilla protected event OnGameAttached returning Bool and the script file and line it is declared in](docs/presentation/screenshot-plan-lookup.png)
 
 ## Templates
 

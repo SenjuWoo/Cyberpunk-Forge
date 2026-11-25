@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.2 - 2026-11-25
+
+- `cpforge plan`: garment words (jacket, coat, shirt, skirt, hat, glasses and
+  the rest) now match whole words only, plurals included. In 0.6.1 "skirt"
+  matched inside "outskirts" and sent location requests to the new-asset
+  route. A garment word now names the asset outright, so "add a skirt to a
+  vendor" routes to new-asset first, with tweak-data as also relevant, and
+  scaffolds `--kind archivexl --kind tweakxl`.
+
 ## 0.6.1 - 2026-11-25
 
 - `cpforge.cmd` (run from the source folder) now returns the forge's exit code.

@@ -1,6 +1,6 @@
 # STATE
 
-Version: **0.6.1** (2026-11-25)
+Version: **0.6.2** (2026-11-25)
 
 ## Goal
 
@@ -8,7 +8,19 @@ A local, agent-friendly toolkit for every kind of Cyberpunk 2077 mod:
 redscript, CET, TweakXL, ArchiveXL, RED4ext, Input Loader, Mod Settings,
 Audioware, REDmod. Facts come from the installed game.
 
+## Done (0.6.2) - whole-word garment routing
+
+- 0.6.1 regression: `skirt` matched inside "outskirts". Garment words moved to
+  a whole-word `words` list on the new-asset route (plurals s/es), weight 2.
+  "add a skirt to a vendor" -> new-asset; "a camp in the outskirts" and
+  "horseshoes for a quest" -> not new-asset. 77 tests.
+
 ## Done (0.6.1) - README presentation and audit
+
+- Released: CI + CodeQL green on 7bd3760; tag v0.6.1 published by the Release
+  workflow; downloaded zip SHA-256 cfefc824...ef043 matches a local
+  `TZ=UTC git archive` of 7bd3760. Docs follow-up 32dc073: CI + CodeQL green.
+  Open alerts after both pushes: code scanning 0, Dependabot 0, secret 0.
 
 - Baseline: 74/74 tests, doctor ok on 2.5 (exit 0).
 - Field report closed: `cpforge.cmd` venv branch returned the pre-run

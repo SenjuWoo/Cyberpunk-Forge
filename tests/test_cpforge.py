@@ -885,6 +885,15 @@ class CliTests(Base):
             self.assertEqual(run_cli("plan", text)[1]["route"]["id"], "new-asset", text)
         self.assertNotEqual(run_cli("plan", "fix the address of a quest marker")[1]["route"]["id"], "new-asset")
 
+    def test_plan_garment_words_match_whole_words_only(self):
+        # "skirt" used to match inside "outskirts".
+        d = run_cli("plan", "a camp in the outskirts")[1]
+        self.assertNotEqual((d["route"] or {}).get("id"), "new-asset")
+        self.assertNotIn("new-asset", [a["id"] for a in d["also_relevant"]])
+        self.assertEqual(run_cli("plan", "add a skirt to a vendor")[1]["route"]["id"], "new-asset")
+        self.assertEqual(run_cli("plan", "two new skirts and some hats")[1]["route"]["id"], "new-asset")
+        self.assertNotEqual((run_cli("plan", "horseshoes for a quest")[1]["route"] or {}).get("id"), "new-asset")
+
     def test_api_and_tweak_commands(self):
         self.assertEqual(run_cli("index")[0], 0)
         code, d = run_cli("api", "class", "PlayerPuppet", "--filter", "Attached")

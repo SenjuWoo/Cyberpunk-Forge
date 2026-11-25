@@ -42,6 +42,12 @@ def plan(request: str) -> dict:
             if f" {kw} " in text or (len(kw) > 4 and kw in text):
                 score += 2 if " " in kw else 1
                 hits.append(kw)
+        # "words" match whole words only (plural s/es allowed): "skirt" must not hit "outskirts".
+        # They name the asset outright, so they weigh like a multi-word keyword.
+        for w in r.get("words", []):
+            if re.search(r"(?<![a-z0-9])" + re.escape(w) + r"(?:s|es)?(?![a-z0-9])", text):
+                score += 2
+                hits.append(w)
         if score:
             scored.append((score, r, hits))
     scored.sort(key=lambda x: -x[0])
