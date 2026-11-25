@@ -1,6 +1,6 @@
 <div align="center">
 
-![Cyberpunk Forge: a black anvil on a yellow cut-corner tile with a cyan scan bar, next to the tagline 'Make, check and ship Cyberpunk 2077 mods against the game you actually have installed.'](docs/presentation/hero.png)
+![Cyberpunk Forge: a black anvil on a yellow cut-corner tile with a cyan scan bar, next to the tagline 'Make, check and ship Cyberpunk 2077 mods. Hooks and records are checked against your own install.'](docs/presentation/hero.png)
 
 [![CI](https://github.com/SenjuWoo/Cyberpunk-Forge/actions/workflows/ci.yml/badge.svg)](https://github.com/SenjuWoo/Cyberpunk-Forge/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/SenjuWoo/Cyberpunk-Forge?color=fcee0a)](https://github.com/SenjuWoo/Cyberpunk-Forge/releases)
@@ -118,6 +118,7 @@ commands and their options as JSON, generated from the parser.
 | Release zip, any zip check | `cpforge package` · `cpforge validate mod.zip` |
 | Test install and removal | `cpforge deploy [--dry-run] [--force]` · `cpforge undeploy [--dry-run]` |
 | Version and Nexus page | `cpforge bump major\|minor\|patch\|X.Y.Z` · `cpforge nexus` |
+| Build a new drivable car (step-by-step notes from a finished car build) | `cpforge plan "new drivable car"` · `cpforge knowledge vehicles` |
 
 ![Terminal: cpforge plan "add a new jacket to a vendor" picks the tweak-data route, lists new-asset as also relevant and scaffolds --kind tweakxl --kind archivexl; cpforge tweak show Items.Preset_Lexington_Default confirms the record exists in TweakDB as a WeaponItem based on Preset_Base_Lexington, with its vanilla .tweak file; cpforge api class PlayerPuppet --filter OnGameAttached shows the vanilla protected event OnGameAttached returning Bool and the script file and line it is declared in](docs/presentation/screenshot-plan-lookup.png)
 
