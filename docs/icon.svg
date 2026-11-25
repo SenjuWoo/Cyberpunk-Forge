@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Cyberpunk Forge: a black anvil on a yellow tile with cut corners, a cyan scan bar behind it">
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff35a"/>
+      <stop offset="1" stop-color="#f2d500"/>
+    </linearGradient>
+    <clipPath id="tile"><path d="M88 0H512V424L424 512H0V88Z"/></clipPath>
+  </defs>
+  <!-- tile with two cut corners -->
+  <path d="M88 0H512V424L424 512H0V88Z" fill="url(#plate)"/>
+  <g clip-path="url(#tile)">
+    <!-- scan bars -->
+    <rect x="0" y="176" width="512" height="22" fill="#00e5ff"/>
+    <rect x="0" y="206" width="512" height="6" fill="#00e5ff" opacity="0.7"/>
+    <!-- hazard slashes, lower right -->
+    <g fill="#0b0a12">
+      <path d="M392 512L456 448H478L414 512Z"/>
+      <path d="M434 512L498 448H512V456L456 512Z"/>
+    </g>
+  </g>
+  <!-- anvil: angular horn, face, waist, foot -->
+  <path fill="#0b0a12" d="M70 214H384V196H442V286H350L314 318V352H352L374 388H138L160 352H198V318L162 286H138Z"/>
+  <!-- face highlight and cut -->
+  <rect x="190" y="226" width="186" height="8" fill="#ff2a6d"/>
+  <rect x="104" y="40" width="64" height="10" fill="#0b0a12"/>
+  <rect x="104" y="58" width="36" height="10" fill="#0b0a12"/>
+  <!-- spark -->
+  <path fill="#ff2a6d" d="M452 120L462 150L492 160L462 170L452 200L442 170L412 160L442 150Z"/>
+</svg>

@@ -875,6 +875,16 @@ class CliTests(Base):
             code, d = run_cli("plan", text)
             self.assertEqual(d["route"]["id"], route, text)
 
+    def test_plan_garment_words_reach_new_asset(self):
+        # The README example: a new jacket sold by a vendor needs ArchiveXL as well as TweakXL.
+        code, d = run_cli("plan", "add a new jacket to a vendor")
+        ids = [d["route"]["id"]] + [a["id"] for a in d["also_relevant"]]
+        self.assertIn("new-asset", ids)
+        self.assertIn("--kind archivexl", d["scaffold"])
+        for text in ("a hoodie for V", "new sneakers", "replace the glasses"):
+            self.assertEqual(run_cli("plan", text)[1]["route"]["id"], "new-asset", text)
+        self.assertNotEqual(run_cli("plan", "fix the address of a quest marker")[1]["route"]["id"], "new-asset")
+
     def test_api_and_tweak_commands(self):
         self.assertEqual(run_cli("index")[0], 0)
         code, d = run_cli("api", "class", "PlayerPuppet", "--filter", "Attached")
@@ -1208,6 +1218,23 @@ class VersionTests(unittest.TestCase):
         self.assertIn(__version__, (ROOT / "STATE.md").read_text(encoding="utf-8"))
         self.assertIn(__version__, (ROOT / "skills/cyberpunk-forge/SKILL.md").read_text(encoding="utf-8"))
         self.assertIn("cpforge.__version__", (ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+
+@unittest.skipUnless(sys.platform == "win32", "cmd.exe launcher")
+class LauncherTests(unittest.TestCase):
+    def test_venv_branch_returns_python_exit_code(self):
+        # %ERRORLEVEL% inside a parenthesised block is expanded when the block is parsed, so the
+        # launcher used to return the errorlevel from before python ran (0) instead of python's.
+        import subprocess
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        shutil.copy(ROOT / "cpforge.cmd", tmp / "cpforge.cmd")
+        # A venv without cpforge: "-m cpforge" fails with a non-zero exit code.
+        subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(tmp / ".venv")], check=True)
+        env = {k: v for k, v in os.environ.items() if k.upper() != "PYTHONPATH"}
+        r = subprocess.run(["cmd", "/d", "/c", str(tmp / "cpforge.cmd"), "doctor", "--no-such-flag"],
+                           capture_output=True, text=True, env=env)
+        self.assertNotEqual(r.returncode, 0, r.stderr)
 
 
 if __name__ == "__main__":

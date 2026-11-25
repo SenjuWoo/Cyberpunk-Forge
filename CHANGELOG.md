@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.1 - 2026-11-25
+
+- `cpforge.cmd` (run from the source folder) now returns the forge's exit code.
+  With a `.venv` present it always returned 0, because `%ERRORLEVEL%` inside a
+  parenthesised block is read before python runs. Findings (1), named failures
+  (2) and bugs (3) now reach the shell and CI scripts again.
+- `cpforge plan` sends garment words (jacket, coat, shirt, shoes, hat, glasses,
+  hoodie and similar) to the new-asset route. "add a new jacket to a vendor"
+  used to suggest TweakXL alone; it now scaffolds `--kind tweakxl --kind
+  archivexl`.
+- README rewritten: cover image, terminal screenshots taken from real runs,
+  every command and claim checked against the code. New `docs/icon.svg` mark.
+
 ## 0.6.0 - 2026-11-15
 
 Audit release: safety and correctness fixes, no new commands.
